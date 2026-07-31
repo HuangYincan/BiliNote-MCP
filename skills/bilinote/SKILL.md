@@ -43,7 +43,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
    - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
-6. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
+6. **轮询**：用**轻量 `get_task_status(task_id)` 快照轮询**，直到 `SUCCESS`（长视频可能要几分钟）。**不要用 `wait_for_note`** —— 它是阻塞调用（单次最多等 timeout 秒），在等待期间会让对话看起来「卡住/挂起」，权限确认也出不来。
 7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
 9. **后续优化 —— 必须处理，不能跳过**：
@@ -70,8 +70,9 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 ## 并发与多会话
 
 - 每个会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离，**多个会话可并行生成不同视频的笔记**，互不干扰。
-- 本会话内最多 `BILINOTE_MAX_WORKERS`（默认 3）个并发笔记任务。
-- 若用户想同时生成多个视频：可逐个 `generate_note` 提交（各自 task_id）后并行轮询；也可提示用户开多个会话。
+- 本会话内最多 `BILINOTE_MAX_WORKERS`（默认 3）个并发笔记任务 —— **客户端和服务端都支持并发**：同一消息里并行提交多个 `generate_note` 完全没问题，每个立即返回各自的 `task_id`，后台并发执行。
+- **多任务轮询务必用轻量 `get_task_status(task_id)` 快照轮询**（每个 task_id 各查一次，不阻塞）；**不要用 `wait_for_note`** —— 它是阻塞调用（单次最多等 timeout 秒），多个并发时会卡住当前轮次，让对话看起来「挂起」。要「等完成」，就 get_task_status 轮几次，每次之间正常对话。
+- 提交前把计划告诉用户（如「我会并行提交 p10/p11/p12 三个分集，各拿到 task_id 后轮询」），用户同意再一次性提交。
 - 注意资源：whisper / MLX 转写吃 CPU/内存，太多会话并行会卡顿；所有会话共用同一个数据库，极端并发偶发写冲突。
 
 ## 故障排查
