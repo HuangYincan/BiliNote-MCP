@@ -40,6 +40,7 @@
 - **修扫码登录两处**：① 状态码搞反 —— B 站 `86101` 是**未扫码**（安静等待）、`86090` 才是已扫码待确认；② 成功 URL 可能是 **crossDomain ticket**（不带 SESSDATA query）—— 改为用 session 跟随重定向、从 Set-Cookie 提取 SESSDATA。均已 mock 验证。
 - **修 SESSDATA 多条 cookie 冲突**：跟随 crossDomain URL 时 B 站会给不同 domain/path 设多条同名 SESSDATA，`requests.cookies.get()` 抛 `CookieConflictError` —— 改为手动遍历取第一条（mock 验证多 cookie 场景）。
 - **扫码登录成功/过期后暂留**：成功保存或二维码过期后显示结果并「（按回车返回）」，不再立刻跳回上级菜单（与下载流程一致）。
+- **模型管理 UX**：本地模型「已下载」和「下载完成」两种情况都**暂留**，显示模型位置 + 询问是否卸载（新增 `_show_uninstall_option` 助手、`_model_dir` 定位目录），不再一闪而过。
 
 ## 发布后维护（2026-07-31）
 

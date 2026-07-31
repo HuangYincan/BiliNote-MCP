@@ -122,6 +122,46 @@ def _download_mlx_model(size: str) -> None:
     print(f"✓ mlx-whisper-{size} 下载完成", file=sys.stdout)
 
 
+def _model_dir(engine: str, size: str) -> "str | None":
+    """返回 fast-whisper / mlx 模型的实际目录（用于显示位置 / 卸载）。"""
+    from app.utils.path_helper import get_model_dir
+
+    if engine == "mlx-whisper":
+        from app.utils.model_status import MLX_REPO_MAP
+
+        repo = MLX_REPO_MAP.get(size)
+        return os.path.join(get_model_dir("mlx-whisper"), repo) if repo else None
+    from app.transcriber.whisper_models import hf_cache_dirname, is_local_target, resolve_whisper_model
+
+    try:
+        target = resolve_whisper_model(size)
+    except Exception:
+        return None
+    if is_local_target(target):
+        return target
+    return os.path.join(get_model_dir("whisper"), hf_cache_dirname(target))
+
+
+def _show_uninstall_option(inq, pick: str, size: str, label: str) -> None:
+    """显示模型位置 + 询问是否卸载（已下载 / 下载完成后用）。"""
+    model_path = _model_dir(pick, size)
+    if model_path and os.path.exists(model_path):
+        print(f"  位置：{model_path}", file=sys.stdout)
+        if inq.confirm(message="卸载该模型？", default=False, keybindings=_KB).execute():
+            import shutil
+            from app.utils.path_helper import get_model_dir
+
+            shutil.rmtree(model_path, ignore_errors=True)
+            if pick == "fast-whisper":
+                # 老布局 whisper-{size} 一并清
+                shutil.rmtree(os.path.join(get_model_dir("whisper"), f"whisper-{size}"), ignore_errors=True)
+            print(f"{_YELLOW}已卸载 {label}{_RESET}", file=sys.stdout)
+        else:
+            print(f"{_DIM}（保留）{_RESET}", file=sys.stdout)
+    else:
+        print(f"{_DIM}（未找到模型目录）{_RESET}", file=sys.stdout)
+
+
 # 交互配色（ANSI）
 _CYAN = "\033[1;36m"
 _YELLOW = "\033[1;33m"
@@ -301,14 +341,23 @@ def _wizard_transcriber(inq) -> None:
                         dl_fn = lambda: _download_mlx_model(size)
                         label = f"mlx-whisper-{size}"
                 if downloaded:
-                    print(f"{_DIM}（{label} 已下载，无需再下）{_RESET}", file=sys.stdout)
+                    # 已下载：显示位置 + 可卸载 + 暂留
+                    _show_header(f"{label} 已下载")
+                    print(f"{_GREEN}✓ {label} 已下载{_RESET}", file=sys.stdout)
+                    _show_uninstall_option(inq, pick, size, label)
+                    try:
+                        input("（按回车返回）", )
+                    except (EOFError, KeyboardInterrupt):
+                        pass
+                    continue
                 elif inq.confirm(message=f"本地模型 {label} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
-                    # 专门的下载界面：进度条 + 完成后停留，避免立刻跳回
+                    # 专门的下载界面：进度条 + 完成后停留 + 位置/卸载，避免立刻跳回
                     _show_header(f"下载 {label}")
                     print("", file=sys.stdout)
                     try:
                         dl_fn()
                         print(f"{_GREEN}✓ {label} 下载完成{_RESET}", file=sys.stdout)
+                        _show_uninstall_option(inq, pick, size, label)
                     except Exception as e:
                         print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
                     try:
