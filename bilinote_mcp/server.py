@@ -326,10 +326,11 @@ def update_provider(
     base_url: Optional[str] = None,
     enabled: Optional[int] = None,
 ) -> str:
-    """更新 LLM 供应商配置，最常用的是给内置供应商（openai/deepseek/qwen/groq…）填 api_key。
+    """更新 LLM 供应商配置（base_url / name / enabled 等非敏感字段）。
 
-    内置供应商在空库时已预置（固定 id + 正确 base_url + 空 key），
-    用 update_provider(provider_id="deepseek", api_key="sk-...") 填入 key 即可用。
+    填 api_key 建议走对话外通道（更安全）：用户在独立终端执行
+    `bilinote-mcp providers set <provider_id> --api-key '...'`。
+    本工具也接受 api_key（给明确接受 key 经过对话的用户用）；改非敏感字段不受限。
     """
     data = {}
     if api_key is not None:

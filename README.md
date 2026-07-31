@@ -110,30 +110,32 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 
 ### 例一：配置 LLM 供应商（内置预置，填 key 即可）
 
-全新安装后 `list_providers` 已预置 7 个内置供应商（openai / deepseek / qwen / groq / ollama…），**id 固定、base_url 正确，只需填 API key**：
+全新安装后 `list_providers` 已预置 7 个内置供应商（openai / deepseek / qwen / groq / ollama…），**id 固定、base_url 正确，只需填 API key**。**key 在独立终端填（对话外），agent 侧只确认「填没填」**：
 
-```text
-list_providers()                                        # 看到内置供应商，key 为空
-update_provider(provider_id="deepseek", api_key="sk-你的key")
-list_models("deepseek")                                 # 实时拉 /v1/models；失败回退本地库
-add_model(provider_id="deepseek", model_name="deepseek-chat")   # 实时拉不到时手动加
-list_models("deepseek")                                 # 确认 models 里有 deepseek-chat
+```bash
+# ① 独立终端（key 不进对话）
+bilinote-mcp providers set deepseek --api-key 'sk-你的key'
+bilinote-mcp providers list                # 确认 deepseek 行 key=已填
 ```
 
-然后生成笔记：
-
 ```text
+# ② agent 侧
+list_providers()                           # deepseek key=已填（掩码，看不到明文）
+list_models("deepseek")                    # 实时拉 /v1/models；失败回退本地库
+add_model(provider_id="deepseek", model_name="deepseek-chat")   # 实时拉不到时手动加
 generate_note(video_url="https://www.bilibili.com/video/BVxxxx", provider_id="deepseek", model_name="deepseek-chat")
 ```
 
 其他内置供应商同理：openai → `https://api.openai.com/v1`、qwen → `https://dashscope.aliyuncs.com/compatible-mode/v1`（都是 OpenAI 兼容协议，`type` 只是标识）。
 
-**中转站 / 自建网关**：用 `add_provider` 填它给你的 base_url 和 key：
+**中转站 / 自建网关**：在独立终端用 CLI 新增（key 不进对话）：
 
-```text
-add_provider(name="我的中转站", api_key="sk-中转站发的key", base_url="https://relay.example.com/v1", type="custom")
-list_models("返回的id")          # 实时拉中转站的模型；拉不到就 add_model 手动加
+```bash
+bilinote-mcp providers add --name 我的中转站 --api-key 'sk-中转站发的key' --base-url 'https://relay.example.com/v1'
+bilinote-mcp providers list                # 记下新供应商 id
 ```
+
+agent 侧 `list_models(新id)` 拉模型；拉不到就 `add_model` 手动加。
 
 ### 没有 LLM API key？
 
@@ -152,8 +154,8 @@ set_transcriber("fast-whisper", "small")
 download_transcriber_model("small")            # 后台下载；list_transcriber_models 看到 state=done 即就绪
 list_transcriber_models()
 
-# 云端转写（快、省资源，需 key）：直接切，无需下载模型
-update_provider(provider_id="groq", api_key="gsk-你的key")   # 内置 groq 供应商填 key
+# 云端转写（快、省资源，需 key）：先在独立终端填 key，再直接切
+#   独立终端：bilinote-mcp providers set groq --api-key 'gsk-你的key'
 set_transcriber("groq")
 get_transcriber_config()           # ready=true 即就绪
 ```
@@ -171,7 +173,7 @@ bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https
 bilinote-mcp providers list                                               # 查看（key 掩码）
 ```
 
-（`uvx --from git+... bilinote-mcp providers ...` 或 `~/.local/bin/bilinote-mcp providers ...` 均可；在 Claude Code 里用 `!` 前缀执行也行，命令在你本机跑、输出不含 key。）
+（`uvx --from git+... bilinote-mcp providers ...` 或 `~/.local/bin/bilinote-mcp providers ...` 均可。**注意在 Claude Code 之外的独立终端执行** —— `!` 前缀的命令文本也在对话里，同样会被发到模型上游。）
 
 - **agent 只需要知道「key 填没填」**：`list_providers` 返回掩码（`sk-S***cdef`），`add_provider` / `update_provider` 工具不回显 key，相关日志已打码。
 - **存哪**：key 只存在本地 SQLite（`~/.local/share/bilinote-mcp/bili_note.db` 或源码 `data/`），已 gitignore，**不会进 GitHub**。
