@@ -215,6 +215,7 @@ class NoteGenerator:
 
             # 4. 截图 & 链接替换
             assets_dir = None
+            _note_dir = None
             if _format and "screenshot" in _format:
                 # 截图模式：note.md 与 Assets/ 同层、相对引用；目录用户可指定
                 _note_dir = Path(notes_dir or (NOTE_OUTPUT_DIR / task_id))

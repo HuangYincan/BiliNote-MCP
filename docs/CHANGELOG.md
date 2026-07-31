@@ -44,6 +44,7 @@
 - **并发/多会话说明**：README 新增「环境变量（可选）」表（含 `BILINOTE_MAX_WORKERS`）与「多会话并行」说明；SKILL 新增「并发与多会话」章节（任务按 task_id 隔离、每会话默认 3 并发、资源注意）。
 - **修 `ready: true` 误报**：`is_model_ready` 只查模型文件、没查环境是否装了对应包（mlx_whisper 可选）→ 文件在但包没装时误报就绪、任务才失败。现在用 `importlib.util.find_spec`（轻量、不 import）检查包可用性，mlx 缺包时 `ready=false` + 清晰原因；`transcriber_provider` 的误导文案（指向不存在的设置页）也改成 CLI 指引。
 - **README 快速开始**：方式一下补「插件默认 MCP 不含 mlx-whisper」说明 + 手动覆盖命令（`claude mcp add bilinote -- uvx --from ... --with mlx-whisper ...`）及冲突处理（`claude mcp remove` 或改用 `~/.local/bin/bilinote-mcp`）。
+- **修「笔记生成但任务 FAILED」**：`note.py` 的 `_note_dir` 未初始化 —— 未插图片且未指定 `notes_dir` 时，`if _note_dir is not None` 引用未赋值变量 → UnboundLocalError → 生成产物已落盘但任务标记 FAILED。补 `_note_dir = None` 初始化。
 
 ## 发布后维护（2026-07-31）
 
