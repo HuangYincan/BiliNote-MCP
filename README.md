@@ -47,6 +47,16 @@ cd BiliNote-MCP && ./install.sh
 
 `install.sh`：创建 venv → 安装依赖 → 注册 MCP → 安装 Skill（同 marketplace 方式）→ **自动弹出 `bilinote-mcp setup` 交互向导**（隐藏输入 LLM API key + 选语音转写引擎，可选立即下载 whisper 模型）。非交互终端会跳过，可稍后手动跑 `bilinote-mcp setup`。
 
+### 装完还要做什么（配置 LLM + 转写）
+
+以上安装只让 MCP / Skill 跑起来；**LLM API key 和语音转写引擎需单独配置**（key 是你的、模型要选）。通用入口是 `bilinote-mcp setup` 交互向导（隐藏输入 key、选转写引擎、可选下载模型）：
+
+- 方式一 / 二（uvx）：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup`
+- 方式三（uv tool install）：`bilinote-mcp setup`
+- 方式四（install.sh）：已自动弹出；也可 `./.venv/bin/bilinote-mcp setup`
+
+> marketplace 的 MCP 与 `uvx ... setup` 共用同一个数据目录（`~/.local/share/bilinote-mcp/`），setup 配好即会话内生效，无需重复配置。
+
 > 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
 
 ### 手动安装等价步骤（源码方式）
