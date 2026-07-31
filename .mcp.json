@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bilinote": {
+      "command": "uv",
+      "args": ["run", "bilinote-mcp"]
+    }
+  }
+}

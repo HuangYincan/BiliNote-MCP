@@ -1,0 +1,28 @@
+# 运行时数据
+data/
+models/
+note_results/
+
+# 数据库
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# uv
+.uv/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.log

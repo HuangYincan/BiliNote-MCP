@@ -1,0 +1,47 @@
+# CHANGELOG
+
+按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
+
+## 节点 1：仓库脚手架（2026-07-31）
+
+- 新建独立仓库 `BiliNote-Mcp`（git init，分支 main）。
+- 初始化目录结构：`bilinote_mcp/`（占位）、`app/`（待移植）、`docs/`、`.claude/skills/bilinote/`（待建）、`data/`。
+- 写入 `pyproject.toml`（基础依赖，待 Phase 5 定稿）、`.gitignore`、`.python-version`(3.12)、`.mcp.json` 示例、`README.md` 骨架、`VENDOR.md`（记录上游 commit `bebf2e8c`）。
+- 文档：创建 `docs/00`~`docs/04` 全部中文文档骨架（目的、架构、预期效果、使用手册、索引）。
+
+## 节点 2：核心代码移植（2026-07-31）
+
+- 从上游 `BiliNote/backend/app/` 复制核心流水线模块到 `app/`：downloaders / transcriber / gpt(含 provider) / db(含 models) / models / enmus / exceptions / decorators / validators / services(去 chat/vector_store/model/model_fallback) / utils(去 response/export/minio/ppt) + 顶层 `events/`（转写后清理信号）。
+- 应用外科手术改动剥离 FastAPI/Web：`__init__.py` 置空、`services/provider.py`（jsonable_encoder + kombu.uuid → stdlib）、`services/note.py`（删 HTTPException）、`services/transcriber_config_manager.py`（routers.config → 新增 `utils/model_status.py`）。
+- 所有文件 `py_compile` 语法通过。
+- 文档：更新 `docs/02-架构设计.md`（vendored 边界与改动）、`VENDOR.md`（模块清单 + 同步步骤）。
+
+## 节点 3：MCP 服务（2026-07-31）
+
+- 编写 `bilinote_mcp/config.py`（环境/数据目录初始化，先于 `app.*` import）与 `bilinote_mcp/server.py`（FastMCP，14 个工具 + 后台任务线程）。
+- 补齐遗漏子包：`app/downloaders/douyin_helper/`（ABogus 签名）、`app/downloaders/kuaishou_helper/`；补依赖 `gmssl`、`blinker`。
+- 文档：更新 `docs/02`（MCP 层设计与运行时约定）、`docs/04`（工具参考表）、`docs/03`（能力清单对齐）。
+
+## 节点 4：Skill（2026-07-31）
+
+- 编写 `.claude/skills/bilinote/SKILL.md`（agent 工作流、安装、配置、故障排查）。
+- 文档：更新 `docs/04`（Skill 章节与安装方式）。
+
+## 节点 5：打包与安装（2026-07-31）
+
+- 依据 vendored 模块实际 import 定稿 `pyproject.toml` 运行时依赖（裁剪自 backend/requirements.txt：去掉 FastAPI/uvicorn/chromadb/celery/导出栈等；补 gmssl、blinker、fastmcp）。
+- 编写 `install.sh`（venv + 安装 + `claude mcp add` 注册 + 链接 skill）、`bilinote-mcp` console script、`.mcp.json` 示例。
+- 修复 MCP stdio 关键问题：`app/utils/logger.py` 控制台日志改走 **stderr**（stdout 必须只承载 JSON-RPC）；进程级把 vendored 代码里的裸 `print()` 重定向到 stderr。
+- 修复 `list_models`/`generate_note` 对 `get_models_by_provider`（返回 dict）的字段访问。
+- 文档：更新 `docs/04`（安装/注册/配置/故障排查全流程）、`docs/03`（验收标准收尾）。
+
+## 节点 6：验证（2026-07-31）
+
+- **安装**：`uv sync` 干净安装（Python 3.12），生成 `bilinote-mcp` console script。
+- **MCP stdio**：initialize 握手成功，`tools/list` 返回 14 个工具；日志全部走 stderr，不污染协议。
+- **健康检查**：ffmpeg ok、db ok。
+- **转写**：`download_transcriber_model("tiny")` 下载成功，whisper tiny 将测试语音正确识别为中文（语言=zh）。
+- **端到端**：`generate_note(本地 wav)` 完整跑通 下载→转写→**LLM 步骤**，用假 key 在 SUMMARIZING 干净失败（401 鉴权错误）——证明流水线到 LLM 边界全部可用；因无真实 API key，最终 Markdown 生成未实跑（上游已验证代码）。
+- **工具矩阵**：9 项检查全 PASS（health_check / validate_url×4 / set-get_transcriber / 14 工具 / tiny 已下载）。
+- **遗留**：`local_downloader` 封面提取对纯音频文件非致命化（改进）；`list_models` 字段访问修复。
+- 文档：核对 `docs/` 与实现一致。
