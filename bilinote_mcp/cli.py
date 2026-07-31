@@ -89,8 +89,9 @@ _YELLOW = "\033[1;33m"
 _GREEN = "\033[1;32m"
 _DIM = "\033[2m"
 _RESET = "\033[0m"
-# 让「← 左键」= 取消（返回上一层）；Ctrl-C 同样触发取消
-_KB = {"left": [{"action": "cancel"}]}
+# 让「← 左键」= interrupt（返回上一层，与 Ctrl-C 同）；InquirerPy 绑定需带 key 字段、
+# action 必须是已注册的（interrupt / answer / skip 等）
+_KB = {"interrupt": [{"key": "left"}]}
 
 
 def _show_header(section: str = "") -> None:
