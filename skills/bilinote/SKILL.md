@@ -7,6 +7,12 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 
 把 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的核心能力（下载 → 转写 → LLM 总结）封装成了 MCP 工具。**无需启动任何后端服务** —— 流水线完全在 MCP server 进程内运行。
 
+## 必须用 MCP 工具（不要用 Bash/curl 硬做）
+
+- 本 Skill 的所有步骤都**调用 `bilinote` MCP 的工具**（`generate_note` / `get_task_status` / `list_providers` / `set_transcriber` 等），**不要**用 Bash / curl 手工调后端、不要手工解析 JSON 文件、不要自己拼 HTTP 请求。
+- 你的工具列表里应该有 `bilinote` 的 MCP 工具。**若看不到**：先告诉用户「重启会话（或 `/reload-plugins`）让 MCP 加载」，并检查 `/mcp`；**不要**在缺工具时用 Bash 硬做。
+- 唯一用 CLI/终端的地方：让用户在**独立终端**跑 `bilinote-mcp providers set`（填 key）、`bilinote-mcp login bilibili`（扫码）—— 这些本来就该在终端做。
+
 ## 前提
 
 1. **MCP server 已注册**（`claude mcp list` 应能看到 `bilinote`，或项目 `.mcp.json` 已配置）。
