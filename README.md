@@ -220,6 +220,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_CONFIG_DIR` | 配置文件目录（转写/cookie/app 配置） | `<数据目录>/config` |
 | `BILINOTE_MODEL_DIR` | whisper / mlx 模型目录 | `<数据目录>/models`（源码 `仓库/models`） |
 | `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
+| `HF_ENDPOINT` | HuggingFace 镜像（国内下载慢/卡时用） | 官方 `https://huggingface.co`；国内可 `https://hf-mirror.com` |
 
 **多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务）。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
 
