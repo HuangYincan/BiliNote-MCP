@@ -1,0 +1,8 @@
+{
+  "name": "bilinote",
+  "description": "Generate AI Markdown notes from video links (Bilibili/YouTube/Douyin/Kuaishou/local)",
+  "author": {
+    "name": "HuangYincan",
+    "url": "https://github.com/HuangYincan"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "bilinote",
+  "description": "BiliNote-MCP：把视频链接变成 AI Markdown 笔记（Skill + MCP server），无需启动后端",
+  "owner": {
+    "name": "HuangYincan",
+    "url": "https://github.com/HuangYincan"
+  },
+  "plugins": [
+    {
+      "name": "bilinote",
+      "source": "./",
+      "description": "生成视频笔记的 Skill 与 MCP server（下载→转写→LLM→Markdown）",
+      "displayName": "BiliNote",
+      "skills": ["./skills/bilinote"],
+      "mcpServers": {
+        "bilinote": {
+          "command": "uvx",
+          "args": [
+            "--from",
+            "git+https://github.com/HuangYincan/BiliNote-MCP",
+            "bilinote-mcp"
+          ]
+        }
+      }
+    }
+  ]
+}

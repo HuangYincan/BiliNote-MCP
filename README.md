@@ -12,18 +12,24 @@
 
 ## 快速开始
 
-MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）。
-
-### 方式一：uvx —— 自动更新（推荐）
+### 方式一：plugin marketplace —— 一键装 Skill + MCP（推荐）
 
 ```bash
-# 用户级注册（默认是项目级 local，去掉 --scope user 即项目级）
+claude plugin marketplace add HuangYincan/BiliNote-MCP
+claude plugin install bilinote@bilinote
+```
+
+两条命令同时装好 **Skill + MCP server**（MCP 走 `uvx`，每次会话自动拉最新 commit）。装完重启会话（或 `/reload-plugins`）即可用。
+
+### 方式二：只装 MCP（不装 Skill）
+
+```bash
 claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
 ```
 
-每次会话启动时 uvx 检查一次本仓库：**有新 commit 就自动用最新版**。
+MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）；uvx 每次会话检查一次仓库，**有新 commit 就自动用最新版**。
 
-### 方式二：`uv tool install` —— 固定版本、启动最快
+### 方式三：`uv tool install` —— 固定版本、启动最快
 
 ```bash
 uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
@@ -32,22 +38,18 @@ claude mcp add bilinote -- "$HOME/.local/bin/bilinote-mcp"
 
 一次性安装后每次会话**直接启动进程（约 1s）**、不访问仓库；但版本被固定，更新需重跑上面的 `uv tool install`（或 `uv tool install --force ...`）。
 
-> 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
-
-### 方式二：克隆 + `install.sh`
+### 方式四：克隆 + `install.sh`
 
 ```bash
-# 0. 克隆仓库
 git clone https://github.com/HuangYincan/BiliNote-MCP.git
-cd BiliNote-MCP
-
-# 1. 一键安装（venv + 注册 MCP + 链接 Skill）
-./install.sh
+cd BiliNote-MCP && ./install.sh
 ```
 
-`install.sh` 会依次：创建虚拟环境并安装依赖 → 注册 MCP（`claude mcp add bilinote -- .venv/bin/bilinote-mcp`）→ 把 Skill 链接到 `~/.claude/skills/bilinote`。
+`install.sh`：创建 venv → 安装依赖 → 注册 MCP → 安装 Skill（同 marketplace 方式）。
 
-### 手动安装等价步骤
+> 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
+
+### 手动安装等价步骤（源码方式）
 
 ```bash
 uv sync                          # 1. 安装依赖（自动创建 venv）
@@ -56,9 +58,6 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 # 2. 注册 MCP（二选一）
 #    Claude Code 项目级：在项目根放 .mcp.json（见仓库示例）
 #    用户级：claude mcp add bilinote -- .venv/bin/bilinote-mcp
-
-# 3. 安装 Skill（供 agent 使用）
-#    ln -sf "$(pwd)/.claude/skills/bilinote" ~/.claude/skills/bilinote
 ```
 
 ## 前提
@@ -109,15 +108,16 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 
 ## Skill（Claude Code）
 
-仓库自带 Claude Code Skill —— `.claude/skills/bilinote/SKILL.md`，它会教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
+仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它会教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
 
-安装（把 Skill 链接到用户级目录）：
+通过 plugin marketplace 一键安装（同时装好 Skill 与 MCP server）：
 
 ```bash
-ln -sf "$(pwd)/.claude/skills/bilinote" ~/.claude/skills/bilinote
+claude plugin marketplace add HuangYincan/BiliNote-MCP
+claude plugin install bilinote@bilinote
 ```
 
-装好后重启 Claude Code 会话，对 Claude 说「**帮我给这个视频做笔记**」+ 链接，Skill 自动触发并驱动 MCP 工具。
+装好后重启会话（或 `/reload-plugins`），对 Claude 说「**帮我给这个视频做笔记**」+ 链接，Skill 自动触发并驱动 MCP 工具。
 
 ## 文档
 

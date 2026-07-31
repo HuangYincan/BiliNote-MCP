@@ -31,10 +31,21 @@ else
   echo "  { \"mcpServers\": { \"bilinote\": { \"command\": \"$BIN\" } } }"
 fi
 
-echo "==> 3/4 链接 Skill 到 ~/.claude/skills/"
-mkdir -p "$HOME/.claude/skills"
-ln -sfn "$REPO_DIR/.claude/skills/bilinote" "$HOME/.claude/skills/bilinote"
-echo "已链接：$HOME/.claude/skills/bilinote"
+echo "==> 3/4 安装 Skill（优先 marketplace，失败回退本地链接）"
+if command -v claude >/dev/null 2>&1; then
+  if claude plugin marketplace add HuangYincan/BiliNote-MCP >/dev/null 2>&1 \
+     && claude plugin install bilinote@bilinote >/dev/null 2>&1; then
+    echo "Skill 已通过 marketplace 安装（bilinote@bilinote）"
+  else
+    mkdir -p "$HOME/.claude/skills"
+    ln -sfn "$REPO_DIR/skills/bilinote" "$HOME/.claude/skills/bilinote"
+    echo "已本地链接：$HOME/.claude/skills/bilinote"
+  fi
+else
+  mkdir -p "$HOME/.claude/skills"
+  ln -sfn "$REPO_DIR/skills/bilinote" "$HOME/.claude/skills/bilinote"
+  echo "已本地链接：$HOME/.claude/skills/bilinote"
+fi
 
 echo ""
 echo "==> 4/4 完成。使用前检查："
