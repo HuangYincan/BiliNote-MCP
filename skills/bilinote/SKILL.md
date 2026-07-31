@@ -40,6 +40,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **是否后续优化**（生成后基于完整字幕精修）：**必须问** —— 直接问用户「笔记生成后，要不要我再根据完整字幕/转写做后续优化？」**优化的重点是：从字幕里挖出更多细节、把要点展开讲透，同时补齐遗漏、修正不一致、增强结构**；用户说要才做（回答会留到步骤 9 执行）；
    - 用户说「你定」才跳过追问、用默认值。
 5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
+   - **⚠ 多任务时一次只发一个 `generate_note`（绝对不要把多个放进同一条消息并行调用）**：Claude Code 客户端对并行 MCP 工具调用不稳，最后一个会卡死、收不到响应、任务也没提交（实测 3 个并行只提交成功 2 个）。正确做法：**发一个 → 拿到 task_id → 再发下一个**；几秒内全部提交完，任务在服务端并发执行（不损失并行）。
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
    - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
