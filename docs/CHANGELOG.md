@@ -6,6 +6,11 @@
 
 - 首次推送到 GitHub（`HuangYincan/BiliNote-MCP`，PUBLIC）。
 - README 补全「一键安装」：仓库地址、clone 步骤、`install.sh` 等价手动步骤。
+- **修复打包 bug**：`.gitignore` 的 `models/`/`data/` 无锚点规则误伤 `app/models/`、`app/db/models/`（wheel 缺失，仅本地 editable 安装可用）→ 改为根锚定 `/models/` `/data/`；`pyproject` 加 `requires-python <3.14` 上界（av/faster-whisper 无 3.14 wheel）、wheel 改用 `include` glob。
+- 支持 **`uvx --from git+URL` 一键安装**：`claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp`（已验证，14 个工具全部可用）。
+- README 增加「方式一：Claude 命令一行安装」。
+- **修复安装后的数据目录 bug**：`bilinote_mcp/config.py` 区分「源码 checkout（用仓库 data/）」「已安装包（用 `~/.local/share/bilinote-mcp`，不写 site-packages）」；`path_helper.py` 的 `get_data_dir/get_model_dir/get_app_dir` 尊重 `BILINOTE_DATA_DIR/BILINOTE_MODEL_DIR` 环境变量，并修复上游 `get_data_dir` 返回 `data/data` 的 bug。
+- **推荐持久安装** `uv tool install --from git+URL`：MCP 是会话级常驻进程，持久安装后每次会话直接启动、零网络/零构建（uvx 每次会话会查一次 git 更新）。
 
 ## 节点 1：仓库脚手架（2026-07-31）
 

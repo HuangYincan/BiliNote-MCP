@@ -12,6 +12,29 @@
 
 ## 快速开始
 
+### 方式一：持久安装（推荐，每次会话零开销）
+
+MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）。为了启动时零网络/零构建，用 `uv tool install` 一次性装好：
+
+```bash
+uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
+claude mcp add bilinote -- "$HOME/.local/bin/bilinote-mcp"
+```
+
+首次安装会构建并下载依赖（几分钟，之后升级才重新构建）。重启 Claude Code 会话后 `claude mcp list` 即可看到 `bilinote`，`/mcp` 里出现 14 个工具。之后每次会话都是**直接启动进程**，不访问仓库。
+
+### 方式二：临时运行（uvx，无需克隆）
+
+```bash
+claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
+```
+
+`uvx` 直接从 GitHub 构建运行；**每次会话启动时会检查一次 git 是否更新**（commit 未变则走缓存秒启，变更才重新构建）。适合尝鲜，长期用推荐方式一。
+
+> 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
+
+### 方式二：克隆 + `install.sh`
+
 ```bash
 # 0. 克隆仓库
 git clone https://github.com/HuangYincan/BiliNote-MCP.git
@@ -23,7 +46,7 @@ cd BiliNote-MCP
 
 `install.sh` 会依次：创建虚拟环境并安装依赖 → 注册 MCP（`claude mcp add bilinote -- .venv/bin/bilinote-mcp`）→ 把 Skill 链接到 `~/.claude/skills/bilinote`。
 
-手动安装等价步骤：
+### 手动安装等价步骤
 
 ```bash
 uv sync                          # 1. 安装依赖（自动创建 venv）
