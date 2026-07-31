@@ -1,0 +1,60 @@
+[
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "type": "built-in",
+    "logo": "OpenAI",
+    "api_key": "",
+    "base_url": "https://api.openai.com/v1"
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "type": "built-in",
+    "logo": "DeepSeek",
+    "api_key": "",
+    "base_url": "https://api.deepseek.com",
+    "models": ["deepseek-chat", "deepseek-reasoner"]
+  },
+  {
+    "id": "qwen",
+    "name": "Qwen",
+    "type": "built-in",
+    "logo": "Qwen",
+    "api_key": "",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "models": ["qwen-plus", "qwen-turbo", "qwen-max", "qwen-long"]
+  },
+    {
+    "id": "Claude",
+    "name": "Claude",
+    "type": "built-in",
+    "logo": "Claude",
+    "api_key": "",
+    "base_url": "https://"
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini",
+    "type": "built-in",
+    "logo": "Gemini",
+    "api_key": "",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
+  },
+    {
+    "id": "groq",
+    "name": "Groq",
+    "type": "built-in",
+    "logo": "Groq",
+    "api_key": "",
+    "base_url": "https://api.groq.com/openai/v1"
+  },
+      {
+    "id": "ollama",
+    "name": "ollama",
+    "type": "built-in",
+    "logo": "Ollama",
+    "api_key": "",
+    "base_url": "http://127.0.0.1:11434/v1"
+  }
+]

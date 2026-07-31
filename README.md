@@ -106,6 +106,48 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 
 工具逐个说明、agent 工作流与故障排查见 [docs/04-使用手册.md](docs/04-使用手册.md)。
 
+## 配置示例
+
+### 例一：配置 LLM 供应商（内置预置，填 key 即可）
+
+全新安装后 `list_providers` 已预置 7 个内置供应商（openai / deepseek / qwen / groq / ollama…），**id 固定、base_url 正确，只需填 API key**：
+
+```text
+list_providers()                                        # 看到内置供应商，key 为空
+update_provider(provider_id="deepseek", api_key="sk-你的key")
+list_models("deepseek")                                 # 实时拉 /v1/models；失败回退本地库
+add_model(provider_id="deepseek", model_name="deepseek-chat")   # 实时拉不到时手动加
+list_models("deepseek")                                 # 确认 models 里有 deepseek-chat
+```
+
+然后生成笔记：
+
+```text
+generate_note(video_url="https://www.bilibili.com/video/BVxxxx", provider_id="deepseek", model_name="deepseek-chat")
+```
+
+其他内置供应商同理：openai → `https://api.openai.com/v1`、qwen → `https://dashscope.aliyuncs.com/compatible-mode/v1`（都是 OpenAI 兼容协议，`type` 只是标识）。自建网关等非内置的用 `add_provider(name, api_key, base_url, type)` 新增。
+
+### 例二：切换语音转写引擎
+
+```text
+get_transcriber_config()           # 当前：fast-whisper / tiny
+list_transcriber_models()          # 各尺寸下载状态
+
+# 本地离线转写（推荐，免费）：切引擎 + 下载对应尺寸模型
+set_transcriber("fast-whisper", "small")
+download_transcriber_model("small")            # 后台下载；list_transcriber_models 看到 state=done 即就绪
+list_transcriber_models()
+
+# 云端转写（快、省资源，需 key）：直接切，无需下载模型
+update_provider(provider_id="groq", api_key="gsk-你的key")   # 内置 groq 供应商填 key
+set_transcriber("groq")
+get_transcriber_config()           # ready=true 即就绪
+```
+
+> whisper 模型尺寸（约）：tiny 75MB / base 145MB / small 460MB / medium 1.5GB / large-v3 3GB。够用选 small 及以下，追求精度再上 medium+。
+> 首次用 fast-whisper 时任务会卡在 `INITIALIZING`（正在下载模型），属正常。
+
 ## Skill（Claude Code）
 
 仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它会教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。

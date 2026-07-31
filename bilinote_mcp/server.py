@@ -29,6 +29,7 @@ DATA_DIR = setup_environment()
 from app.db.engine import get_engine
 from app.db.init_db import init_db
 from app.db.model_dao import get_models_by_provider, insert_model
+from app.db.provider_dao import seed_default_providers
 from app.enmus.note_enums import DownloadQuality
 from app.enmus.task_status_enums import TaskStatus
 from app.services.cookie_manager import CookieConfigManager
@@ -59,8 +60,10 @@ def _print_to_stderr(*args, **kwargs):
 
 _builtins.print = _print_to_stderr
 
-# 确保数据库表存在（幂等，init_db 使用 create_all）
+# 确保数据库表存在（幂等，init_db 使用 create_all）；空库时预置内置供应商
+# （openai/deepseek/qwen/groq/ollama…，固定 id + 正确 base_url + 空 key，用 update_provider 填 key）
 init_db()
+seed_default_providers()
 
 # 支持生成笔记的平台（与 app/services/constant.py 的 SUPPORT_PLATFORM_MAP 对应）
 _PLATFORM_HINTS = [
@@ -312,6 +315,36 @@ def add_provider(name: str, api_key: str, base_url: str, type: str) -> str:
         name=name, api_key=api_key, base_url=base_url, logo="custom", type_=type
     )
     return json.dumps({"id": provider_id, "name": name}, ensure_ascii=False)
+
+
+@mcp.tool()
+def update_provider(
+    provider_id: str,
+    api_key: Optional[str] = None,
+    name: Optional[str] = None,
+    base_url: Optional[str] = None,
+    enabled: Optional[int] = None,
+) -> str:
+    """更新 LLM 供应商配置，最常用的是给内置供应商（openai/deepseek/qwen/groq…）填 api_key。
+
+    内置供应商在空库时已预置（固定 id + 正确 base_url + 空 key），
+    用 update_provider(provider_id="deepseek", api_key="sk-...") 填入 key 即可用。
+    """
+    data = {}
+    if api_key is not None:
+        data["api_key"] = api_key
+    if name is not None:
+        data["name"] = name
+    if base_url is not None:
+        data["base_url"] = base_url
+    if enabled is not None:
+        data["enabled"] = enabled
+    if not data:
+        raise ValueError("至少提供 api_key / name / base_url / enabled 之一")
+    updated = ProviderService.update_provider(provider_id, data)
+    if not updated:
+        raise ValueError(f"更新失败：供应商 {provider_id} 不存在")
+    return json.dumps({"updated": provider_id, "enabled": updated.get("enabled")}, ensure_ascii=False)
 
 
 @mcp.tool()
