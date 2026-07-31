@@ -591,7 +591,9 @@ def _login_cli(argv) -> None:
                         s = requests.Session()
                         s.headers.update(_UA)
                         s.get(data["url"], timeout=10)
-                        sess = s.cookies.get("SESSDATA") or ""
+                        # SESSDATA 可能有多条（不同 domain/path），requests 的 .get() 会抛
+                        # CookieConflictError；手动遍历取第一条
+                        sess = next((c.value for c in s.cookies if c.name == "SESSDATA"), "")
                     except Exception as e:
                         print(f"跟随登录 URL 拿 cookie 失败: {e}", file=sys.stderr)
                 if not sess:
