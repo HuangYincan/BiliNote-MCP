@@ -28,6 +28,7 @@
 - SKILL.md：前提补充「用户没有 key 优先用 Ollama」的 agent 处理路径。
 - **API key 安全通道（对话外）**：新增 `bilinote-mcp providers` CLI 子命令（`list` / `set` / `add`），用户在终端直接写 key，**key 不经过 agent 对话**（对话会发送到 agent 的 LLM 上游）。README 安全说明改为「别在对话里发 key」指引；SKILL.md 加安全红线（让用户用终端 CLI 填 key）。
 - 修复：`builtins.print` 重定向挪到 `import app.*` 之前（douyin_downloader 等模块导入时打印会污染 CLI stdout / MCP stdio）。
+- README 新增「更新」章节：确认 MCP（uvx）与 Skill（插件）均为**自动更新**；附手动强制刷新命令 `claude plugin marketplace update bilinote` + `claude plugin install bilinote@bilinote`。
 
 ## 节点 1：仓库脚手架（2026-07-31）
 

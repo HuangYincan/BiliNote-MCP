@@ -60,6 +60,22 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 #    用户级：claude mcp add bilinote -- .venv/bin/bilinote-mcp
 ```
 
+## 更新
+
+MCP server 和 Skill 都**自动更新**（无需手动操作）：
+
+- **MCP server**：走 uvx，每次会话启动时自动检查仓库，有新 commit 即用新版。
+- **Skill / 插件**：Claude Code 会自动刷新 marketplace 并升级插件到最新 commit。
+
+若想手动强制刷新（或自动更新偶发滞后时）：
+
+```bash
+claude plugin marketplace update bilinote     # 拉最新 marketplace
+claude plugin install bilinote@bilinote       # 幂等，重装/升级插件到最新
+```
+
+源码 / `install.sh` 方式：`git pull && ./install.sh`。
+
 ## 前提
 
 - Python ≥ 3.11，<3.14（推荐 3.12）
