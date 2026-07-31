@@ -11,9 +11,10 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 
 1. **MCP server 已注册**（`claude mcp list` 应能看到 `bilinote`，或项目 `.mcp.json` 已配置）。
 2. **FFmpeg 已安装**（`ffmpeg -version`）。缺失时先让用户安装，再调用 `health_check` 确认。
-3. **至少一个 LLM 供应商可用**（内置已预置：`list_providers` 查看，空 key 用 `update_provider` 填；自建用 `add_provider`）。
+3. **至少一个 LLM 供应商可用**（内置已预置：`list_providers` 查看；空 key 用 `update_provider` 填；自建用 `add_provider`）。
+   - **安全红线：绝不要让用户在对话里发 API key** —— 对话会发到你的 LLM 上游。让用户在本机终端执行 `bilinote-mcp providers set <id> --api-key '...'`（或在 Claude Code 里用 `!` 前缀执行）。填好后 `list_providers` 显示 `key=已填`，你直接用它，**不需要也不应该看到明文 key**。
    - 用户没有 key？**优先用 Ollama**（本地免费、无需 key）：`list_models("ollama")` 有模型就直接 `generate_note(provider_id="ollama", model_name=...)`；
-   - 否则引导用户注册免费额度（Groq/DeepSeek 等）后 `update_provider` 填 key。
+   - 否则引导用户注册免费额度（Groq/DeepSeek 等）后按上面方式在终端填 key。
 4. 转写引擎二选一：
    - 本地 `fast-whisper`：需先 `download_transcriber_model("tiny")`（或更大尺寸）下载模型；
    - 云端 `groq` / `bcut`：`set_transcriber("groq")`（需要对应 API key 配置为 id 为 `groq` 的供应商）。

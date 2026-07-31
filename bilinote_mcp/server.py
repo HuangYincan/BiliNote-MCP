@@ -25,6 +25,21 @@ from bilinote_mcp.config import setup_environment
 
 DATA_DIR = setup_environment()
 
+# MCP stdio 传输用 stdout 承载 JSON-RPC；vendored 代码里有大量裸 print()（含模块导入时）
+# 会污染协议。进程级把 print 重定向到 stderr —— 必须在 import app.* 之前生效
+#（FastMCP 通过 sys.stdout.buffer 写响应，不受影响）。
+import builtins as _builtins
+
+_orig_print = _builtins.print
+
+
+def _print_to_stderr(*args, **kwargs):
+    kwargs.setdefault("file", sys.stderr)
+    _orig_print(*args, **kwargs)
+
+
+_builtins.print = _print_to_stderr
+
 # vendored 核心流水线
 from app.db.engine import get_engine
 from app.db.init_db import init_db
@@ -45,20 +60,6 @@ from app.utils.path_helper import get_model_dir
 from mcp.server.fastmcp import FastMCP
 
 logger = get_logger(__name__)
-
-# MCP stdio 传输用 stdout 承载 JSON-RPC；vendored 代码里有大量裸 print() 会污染协议。
-# 进程级把 print 重定向到 stderr（FastMCP 通过 sys.stdout.buffer 写响应，不受影响）。
-import builtins as _builtins
-
-_orig_print = _builtins.print
-
-
-def _print_to_stderr(*args, **kwargs):
-    kwargs.setdefault("file", sys.stderr)
-    _orig_print(*args, **kwargs)
-
-
-_builtins.print = _print_to_stderr
 
 # 确保数据库表存在（幂等，init_db 使用 create_all）；空库时预置内置供应商
 # （openai/deepseek/qwen/groq/ollama…，固定 id + 正确 base_url + 空 key，用 update_provider 填 key）
@@ -539,8 +540,56 @@ def set_downloader_cookie(platform: str, cookie: str) -> str:
 # ---------- 入口 ----------
 
 
+def _cli_providers(args) -> None:
+    """`bilinote-mcp providers ...`：在终端直接管理 LLM 供应商。
+
+    设计意图：API key 由用户在终端写入，**不经过 agent 对话**——
+    对话内容会发送到 agent 的 LLM 上游，key 一旦出现在对话里就等于交给了上游。
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="bilinote-mcp providers",
+        description="在终端管理 LLM 供应商（key 不经过 agent 对话，避免泄露给 agent 的 LLM 上游）",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_list = sub.add_parser("list", help="列出供应商（key 掩码）")
+    p_set = sub.add_parser("set", help="给供应商填 key / base_url / name")
+    p_set.add_argument("provider_id")
+    p_set.add_argument("--api-key", help="API key")
+    p_set.add_argument("--base-url", help="base_url")
+    p_set.add_argument("--name", help="显示名")
+    p_add = sub.add_parser("add", help="新增供应商（如中转站）")
+    p_add.add_argument("--name", required=True)
+    p_add.add_argument("--api-key", required=True)
+    p_add.add_argument("--base-url", required=True)
+    p_add.add_argument("--type", default="custom")
+
+    opts = parser.parse_args(args)
+    # CLI 的用户可见输出走 stdout（模块级 print 已被重定向到 stderr）
+    if opts.cmd == "list":
+        rows = json.loads(list_providers())
+        if not rows:
+            print("（暂无供应商，可先启动一次 MCP 自动预置内置供应商）", file=sys.stdout)
+            return
+        for p in rows:
+            key = f"已填 {p['api_key']}" if p["api_key"] else "空"
+            print(f"{p['id']:10} {p['name']:12} key={key}  base_url={p['base_url']}", file=sys.stdout)
+    elif opts.cmd == "set":
+        r = json.loads(update_provider(opts.provider_id, api_key=opts.api_key, base_url=opts.base_url, name=opts.name))
+        print(f"已更新 {r['updated']} (enabled={r['enabled']})", file=sys.stdout)
+    elif opts.cmd == "add":
+        r = json.loads(add_provider(name=opts.name, api_key=opts.api_key, base_url=opts.base_url, type=opts.type))
+        print(f"已新增 {opts.name} → id={r['id']}", file=sys.stdout)
+
+
 def main() -> None:
-    """MCP server 入口（console script `bilinote-mcp`）。"""
+    """入口：`bilinote-mcp providers ...` 走 CLI；其余进入 MCP server（stdio）。"""
+    if len(sys.argv) > 1 and sys.argv[1] == "providers":
+        _cli_providers(sys.argv[2:])
+        return
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
     init_db()
     try:

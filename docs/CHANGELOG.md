@@ -26,6 +26,8 @@
   2. `update_provider` 日志打印 `filtered_data` 会带 api_key → 打码。
 - README 增补：中转站/自建网关配置示例、「没有 LLM key」指南（Ollama 本地免费 / 免费额度注册）、「安全说明」章节（key 存本地 gitignored DB、MCP 响应掩码、明文存储提醒）。
 - SKILL.md：前提补充「用户没有 key 优先用 Ollama」的 agent 处理路径。
+- **API key 安全通道（对话外）**：新增 `bilinote-mcp providers` CLI 子命令（`list` / `set` / `add`），用户在终端直接写 key，**key 不经过 agent 对话**（对话会发送到 agent 的 LLM 上游）。README 安全说明改为「别在对话里发 key」指引；SKILL.md 加安全红线（让用户用终端 CLI 填 key）。
+- 修复：`builtins.print` 重定向挪到 `import app.*` 之前（douyin_downloader 等模块导入时打印会污染 CLI stdout / MCP stdio）。
 
 ## 节点 1：仓库脚手架（2026-07-31）
 

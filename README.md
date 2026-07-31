@@ -163,8 +163,18 @@ get_transcriber_config()           # ready=true 即就绪
 
 ## 安全说明（API Key）
 
+**关键：不要在对话里把 key 发给 agent。** agent 的对话内容会发送到它的 LLM 上游，key 一旦出现在对话里，就等于交给了上游。要提供 key，请用「对话外」通道 —— 在终端直接执行（`bilinote-mcp` 支持子命令）：
+
+```bash
+bilinote-mcp providers set deepseek --api-key 'sk-你的key'                # 给内置供应商填 key
+bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
+bilinote-mcp providers list                                               # 查看（key 掩码）
+```
+
+（`uvx --from git+... bilinote-mcp providers ...` 或 `~/.local/bin/bilinote-mcp providers ...` 均可；在 Claude Code 里用 `!` 前缀执行也行，命令在你本机跑、输出不含 key。）
+
+- **agent 只需要知道「key 填没填」**：`list_providers` 返回掩码（`sk-S***cdef`），`add_provider` / `update_provider` 工具不回显 key，相关日志已打码。
 - **存哪**：key 只存在本地 SQLite（`~/.local/share/bilinote-mcp/bili_note.db` 或源码 `data/`），已 gitignore，**不会进 GitHub**。
-- **不外泄**：`list_providers` 只返回掩码（`sk-S***cdef`）；`add_provider` / `update_provider` 不回显 key；相关日志已打码。
 - **提醒**：key 以明文存在本地数据库（与上游 BiliNote 一致）。若机器可能被他人使用，建议后续用系统 keychain 加密存储。
 
 ## Skill（Claude Code）
