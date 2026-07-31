@@ -30,14 +30,14 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 1. **`health_check`** —— 确认 ffmpeg/db 就绪；若 `ffmpeg: missing` 先让用户装 FFmpeg。
 2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。B 站视频**优先用平台字幕（含 AI 字幕）跳过语音识别**；AI 字幕需 B 站 SESSDATA cookie —— 没配时任务会走语音识别，告诉用户可 `bilinote-mcp login bilibili` 扫码自动获取（或手动填 SESSDATA），之后就能直接用 AI 字幕。
 3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
-4. **确认参数（用户没指定时逐项询问，给出默认值）**：
-   - **LLM 模型**：先 `list_models(provider_id)` 拿可用模型，**列出给用户选**（如 `gemini-2.5-flash` / `deepseek-chat`），**不要悄悄自己定**；
+4. **确认参数（用户没明确指定前，必须先问，不得自行默认就提交）**：
+   - **LLM 模型**（必须问）：`list_models(provider_id)` 拿到模型后，**把列表呈现给用户、让用户指定一个**（如「用 `gemini-2.5-flash` 还是 `deepseek-chat`？」）。**用户明确说出模型名（或说「你定」）之前，不要调用 `generate_note`**。
    - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
-   - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…）；
+   - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…），问一句；
    - **是否视频理解**（看画面）：默认否；要则配多模态模型 + `video_understanding=True, video_interval=6, grid_size=[3,3]`；
    - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
-   - 用户说「你定」就跳过追问，用默认值。
-5. **`generate_note(video_url=url, provider_id=..., model_name=..., style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
+   - 用户说「你定」才跳过追问、用默认值。
+5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
    - 视频理解：加 `video_understanding=True, video_interval=6, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
