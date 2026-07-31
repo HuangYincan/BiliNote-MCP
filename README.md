@@ -231,11 +231,11 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | 装的什么 | 更新命令 |
 |----------|----------|
 | **MCP server**（uvx / 插件） | ✅ 自动更新（每次会话查最新 commit），无需手动 |
-| **Skill / 插件** | `claude plugin disable bilinote@bilinote` + `claude plugin install bilinote@bilinote` |
+| **Skill / 插件** | `claude plugin marketplace update bilinote` + `claude plugin disable bilinote@bilinote` + `claude plugin install bilinote@bilinote` |
 | **`uv tool install` 装的 CLI**（`bilinote-mcp`） | `uv tool upgrade bilinote-mcp`（保留 `--with mlx-whisper` 等附加依赖） |
 | **源码 / `install.sh`** | `git pull && ./install.sh` |
 
-> 注意：插件 `install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才重装到最新。
+> **Skill/插件三步各有用**：① `marketplace update` 拉最新 commit；② `disable` 让 `install` 不跳过；③ `install` 重装到最新。缺任一步都可能用旧版（`install` 单独会被「已安装」跳过）。
 
 ## 安全（API Key）
 
