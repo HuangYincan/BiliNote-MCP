@@ -1,5 +1,6 @@
 import os
 import platform
+import threading
 from enum import Enum
 
 from app.transcriber.groq import GroqTranscriber
@@ -38,16 +39,22 @@ _transcribers = {
     TranscriberType.GROQ: None,
 }
 
+# 构造单例的锁：并发首个任务同时首次加载 whisper 模型时，只允许一个线程真正构造
+_cache_lock = threading.Lock()
+
 # 公共实例初始化函数
 def _init_transcriber(key: TranscriberType, cls, *args, **kwargs):
     if _transcribers[key] is None:
-        logger.info(f'创建 {cls.__name__} 实例: {key}')
-        try:
-            _transcribers[key] = cls(*args, **kwargs)
-            logger.info(f'{cls.__name__} 创建成功')
-        except Exception as e:
-            logger.error(f"{cls.__name__} 创建失败: {e}")
-            raise
+        # 双重检查：防止两个并发任务同时首次构造（whisper 模型加载很重）
+        with _cache_lock:
+            if _transcribers[key] is None:
+                logger.info(f'创建 {cls.__name__} 实例: {key}')
+                try:
+                    _transcribers[key] = cls(*args, **kwargs)
+                    logger.info(f'{cls.__name__} 创建成功')
+                except Exception as e:
+                    logger.error(f"{cls.__name__} 创建失败: {e}")
+                    raise
     return _transcribers[key]
 
 # 各类型获取方法
@@ -58,10 +65,12 @@ def get_whisper_transcriber(model_size="base", device="cuda"):
     return _init_transcriber(TranscriberType.FAST_WHISPER, WhisperTranscriber, model_size=model_size, device=device)
 
 def get_bcut_transcriber():
-    return _init_transcriber(TranscriberType.BCUT, BcutTranscriber)
+    # bcut 有请求级状态（task_id/上传分片/download_url），并发任务必须各用各的实例
+    return BcutTranscriber()
 
 def get_kuaishou_transcriber():
-    return _init_transcriber(TranscriberType.KUAISHOU, KuaishouTranscriber)
+    # 快手转写器内部有请求级状态，同样不能共享单例
+    return KuaishouTranscriber()
 
 def get_mlx_whisper_transcriber(model_size="base"):
     if not MLX_WHISPER_AVAILABLE:

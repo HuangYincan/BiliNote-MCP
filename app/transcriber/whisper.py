@@ -16,6 +16,7 @@ from events import transcription_finished
 from pathlib import Path
 import os
 import shutil
+import threading
 
 
 '''
@@ -49,6 +50,9 @@ class WhisperTranscriber(Transcriber):
 
         self.compute_type = compute_type or ("float16" if self.device == "cuda" else "int8")
         self.model_size = model_size
+
+        # 共享单例上的转写锁：模型加载前就建好，即使加载失败锁也始终存在
+        self._lock = threading.Lock()
 
         model_dir = get_model_dir("whisper")
         try:
@@ -121,32 +125,38 @@ class WhisperTranscriber(Transcriber):
 
     @timeit
     def transcript(self, file_path: str) -> TranscriptResult:
-        try:
+        # fast-whisper 模型非线程安全：共享单例上串行化转写（正确性优先于该步骤并行度）。
+        # 锁须覆盖 transcribe 调用和 segments 生成器迭代（生成器同样读取共享模型）。
+        with self._lock:
+            try:
 
-            segments_raw, info = self.model.transcribe(file_path)
+                segments_raw, info = self.model.transcribe(file_path)
 
-            segments = []
-            full_text = ""
+                segments = []
+                full_text = ""
 
-            for seg in segments_raw:
-                text = seg.text.strip()
-                full_text += text + " "
-                segments.append(TranscriptSegment(
-                    start=seg.start,
-                    end=seg.end,
-                    text=text
-                ))
+                for seg in segments_raw:
+                    text = seg.text.strip()
+                    full_text += text + " "
+                    segments.append(TranscriptSegment(
+                        start=seg.start,
+                        end=seg.end,
+                        text=text
+                    ))
 
-            result= TranscriptResult(
-                language=info.language,
-                full_text=full_text.strip(),
-                segments=segments,
-                raw=info
-            )
-            # self.on_finish(file_path, result)
-            return result
-        except Exception as e:
-            print(f"转写失败：{e}")
+                result = TranscriptResult(
+                    language=info.language,
+                    full_text=full_text.strip(),
+                    segments=segments,
+                    raw=info
+                )
+                # self.on_finish(file_path, result)
+                return result
+            except Exception as e:
+                # 抛给调用方（note._transcribe_audio 捕获并写入 FAILED 状态）；不要返回 None，
+                # 否则上层 asdict(None) 会报误导性的 TypeError
+                logger.error(f"转写失败：{e}")
+                raise
 
 
     def on_finish(self,video_path:str,result: TranscriptResult)->None:

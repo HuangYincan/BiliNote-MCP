@@ -2,6 +2,7 @@ import mlx_whisper
 from pathlib import Path
 import os
 import platform
+import threading
 from huggingface_hub import snapshot_download
 
 from app.decorators.timeit import timeit
@@ -54,6 +55,9 @@ class MLXWhisperTranscriber(Transcriber):
         self.model_size = model_size
         self.model_name = resolve_mlx_repo_id(model_size)
         self.model_path = None
+
+        # 共享单例上的转写锁：mlx_whisper.transcribe 每次调用都会加载模型，并发调用需串行化
+        self._lock = threading.Lock()
         
         # 设置模型路径
         model_dir = get_model_dir("mlx-whisper")
@@ -79,39 +83,40 @@ class MLXWhisperTranscriber(Transcriber):
 
     @timeit
     def transcript(self, file_path: str) -> TranscriptResult:
-        try:
-            # 使用 MLX Whisper 进行转录
-            result = mlx_whisper.transcribe(
-                file_path,
-                path_or_hf_repo=f"{self.model_name}"
-            )
-            
-            # 转换为标准格式
-            segments = []
-            full_text = ""
-            
-            for segment in result["segments"]:
-                text = segment["text"].strip()
-                full_text += text + " "
-                segments.append(TranscriptSegment(
-                    start=segment["start"],
-                    end=segment["end"],
-                    text=text
-                ))
-            
-            transcript_result = TranscriptResult(
-                language=result.get("language", "unknown"),
-                full_text=full_text.strip(),
-                segments=segments,
-                raw=result
-            )
-            
-            # self.on_finish(file_path, transcript_result)
-            return transcript_result
-            
-        except Exception as e:
-            logger.error(f"MLX Whisper 转写失败：{e}")
-            raise e
+        with self._lock:
+            try:
+                # 使用 MLX Whisper 进行转录
+                result = mlx_whisper.transcribe(
+                    file_path,
+                    path_or_hf_repo=f"{self.model_name}"
+                )
+
+                # 转换为标准格式
+                segments = []
+                full_text = ""
+
+                for segment in result["segments"]:
+                    text = segment["text"].strip()
+                    full_text += text + " "
+                    segments.append(TranscriptSegment(
+                        start=segment["start"],
+                        end=segment["end"],
+                        text=text
+                    ))
+
+                transcript_result = TranscriptResult(
+                    language=result.get("language", "unknown"),
+                    full_text=full_text.strip(),
+                    segments=segments,
+                    raw=result
+                )
+
+                # self.on_finish(file_path, transcript_result)
+                return transcript_result
+
+            except Exception as e:
+                logger.error(f"MLX Whisper 转写失败：{e}")
+                raise e
 
     def on_finish(self, video_path: str, result: TranscriptResult) -> None:
         logger.info("MLX Whisper 转写完成")
