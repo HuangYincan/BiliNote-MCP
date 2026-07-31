@@ -22,6 +22,7 @@
 - 修复误导提示：`transcriber_config_manager.is_model_ready` 的「请先在设置页下载」改为「请先执行 `bilinote-mcp transcriber download <size>`」。
 - cli.py 本地 whisper 尺寸补上 `large-v3-turbo`（后端早已支持）；README / docs/04 明确转写引擎列表（含 mlx-whisper 仅 macOS）、设备说明（whisper 自动检测 CUDA、CLI download 用 cpu 只因下载不推理）。
 - README / docs/04「前提」补：本地 whisper 下载、GPU 加速（NVIDIA 用 `--with torch` 走 CUDA、macOS 用 `mlx-whisper`）。
+- **setup 交互升级**：改用 InquirerPy —— 方向键选择 + 高亮、主菜单随时切换、可返回上一步，做成**随时可反复进入修改的配置入口**（① LLM 供应商 ② 转写引擎 ③ 其他/Cookie/笔记位置）。新增 `_download_whisper` 助手（transcriber download 也复用）；无 InquirerPy 时回退纯文本向导；非 TTY 优雅退出。
 
 ## 发布后维护（2026-07-31）
 

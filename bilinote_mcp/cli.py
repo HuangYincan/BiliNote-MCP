@@ -10,6 +10,7 @@ API key 的设计原则：key 由用户在独立终端写入（不经过 agent �
 import argparse
 import builtins
 import json
+import os
 import sys
 
 from bilinote_mcp.config import setup_environment
@@ -67,82 +68,207 @@ def _ask_secret(prompt: str) -> str:
         return ""
 
 
+def _download_whisper(size: str) -> None:
+    """在终端下载 fast-whisper 模型（阻塞）。"""
+    from app.transcriber.whisper_models import resolve_whisper_model
+    from faster_whisper import WhisperModel
+    from app.utils.path_helper import get_model_dir
+
+    print(f"正在下载 whisper-{size}（首次约几十MB~数GB，请稍候）…", file=sys.stdout)
+    WhisperModel(
+        model_size_or_path=resolve_whisper_model(size),
+        device="cpu", compute_type="int8",
+        download_root=get_model_dir("whisper"),
+    )
+    print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
+
+
 def _setup_cli() -> None:
-    """交互式初始化：配置 LLM 供应商 + 语音转写引擎。"""
-    print("=== BiliNote-MCP 初始化配置 ===", file=sys.stdout)
-    print("API key 为隐藏输入，不经过 agent 对话。随时 Ctrl-C 取消。", file=sys.stdout)
+    """交互式配置向导：主菜单 + 各配置区，方向键选择、可随时返回，可反复运行修改配置。"""
+    try:
+        from InquirerPy import inquirer
+    except ImportError:
+        print("（未安装 InquirerPy，使用纯文本提示；`uv sync` 后可启用方向键/高亮选择）", file=sys.stderr)
+        _setup_cli_fallback()
+        return
+    print("⚙  BiliNote-MCP 配置向导（↑↓ 选择 / 回车确认 / 随时 Ctrl-C 退出，可反复进入修改）", file=sys.stdout)
+    print("    API key 为隐藏输入，不经过 agent 对话。", file=sys.stdout)
+    try:
+        _wizard(inquirer)
+    except (EOFError, KeyboardInterrupt):
+        print("（已取消）", file=sys.stdout)
 
-    # ---------- ① LLM 供应商 ----------
-    print("\n① 选择 LLM 供应商：", file=sys.stdout)
-    for k, (_, name, url) in _BUILTIN_PROVIDERS.items():
-        print(f"   {k}) {name}  {url}", file=sys.stdout)
-    print("   6) 中转站 / 自建网关（自定义 base_url）", file=sys.stdout)
-    choice = _ask("选择 [1-6]", default="1")
 
-    if choice in _BUILTIN_PROVIDERS:
-        pid, name, url = _BUILTIN_PROVIDERS[choice]
-        if choice == "5":  # ollama
-            print(f"   ✓ 使用 {name}（无需 key，请确保本机已启动 ollama）", file=sys.stdout)
+def _wizard(inq) -> None:
+    while True:
+        choice = inq.select(
+            message="选择要配置的项目",
+            choices=[
+                {"name": "① LLM 供应商（填 key / 改 base_url / 新增）", "value": "llm"},
+                {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
+                {"name": "③ 其他（平台 Cookie / 默认笔记位置）", "value": "other"},
+                {"name": "✔ 完成 / 退出", "value": "exit"},
+            ],
+            default="llm",
+        ).execute()
+        if choice == "llm":
+            _wizard_llm(inq)
+        elif choice == "transcriber":
+            _wizard_transcriber(inq)
+        elif choice == "other":
+            _wizard_other(inq)
         else:
-            key = _ask_secret(f"   输入 {name} 的 API key")
+            print("✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`", file=sys.stdout)
+            return
+
+
+def _wizard_llm(inq) -> None:
+    while True:
+        provs = ProviderService.get_all_providers_safe()
+        choices = [
+            {
+                "name": f"{p['id']:<10} {p['name']:<12} key={'✓已填' if p['api_key'] else '空'}  {p['base_url']}",
+                "value": ("edit", p["id"]),
+            }
+            for p in provs
+        ]
+        choices += [
+            {"name": "＋ 新增供应商（中转站/自建）", "value": ("add", None)},
+            {"name": "← 返回主菜单", "value": ("back", None)},
+        ]
+        pick = inq.select(message="LLM 供应商（选择一个编辑；key 掩码显示）", choices=choices).execute()
+        if pick[0] == "back":
+            return
+        if pick[0] == "add":
+            name = inq.text(message="供应商名称").execute()
+            base_url = inq.text(message="base_url（如 https://relay.example.com/v1）").execute()
+            key = inq.secret(message="API key（隐藏输入）").execute()
+            if name and base_url and key:
+                new_id = ProviderService.add_provider(name=name, api_key=key, base_url=base_url, logo="custom", type_="custom")
+                print(f"✓ 已新增 {name} → id={new_id}", file=sys.stdout)
+            else:
+                print("⚠ 信息不完整，未新增", file=sys.stdout)
+            continue
+        pid = pick[1]
+        key = inq.secret(message=f"新的 API key（{pid}，直接回车保持不变）").execute()
+        if key:
+            ProviderService.update_provider(pid, {"api_key": key})
+            print(f"✓ 已更新 {pid} 的 key", file=sys.stdout)
+        base_url = inq.text(message=f"base_url（{pid}，直接回车保持不变）").execute()
+        if base_url:
+            ProviderService.update_provider(pid, {"base_url": base_url})
+
+
+def _wizard_transcriber(inq) -> None:
+    while True:
+        cfg = TranscriberConfigManager().get_config()
+        cur = f"{cfg['transcriber_type']} / {cfg['whisper_model_size']}"
+        pick = inq.select(
+            message=f"语音转写引擎（当前：{cur}）",
+            choices=[
+                {"name": f"fast-whisper（本地）   当前尺寸 {cfg['whisper_model_size']}", "value": "fast-whisper"},
+                {"name": "groq（云端，需 key）", "value": "groq"},
+                {"name": "bcut（云端）", "value": "bcut"},
+                {"name": "kuaishou（云端）", "value": "kuaishou"},
+                {"name": "mlx-whisper（仅 macOS，GPU）", "value": "mlx-whisper"},
+                {"name": "← 返回主菜单", "value": "back"},
+            ],
+            default=cfg["transcriber_type"] if cfg["transcriber_type"] in ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper") else "fast-whisper",
+        ).execute()
+        if pick == "back":
+            return
+        if pick in ("fast-whisper", "mlx-whisper"):
+            sizes = [{"name": s, "value": s} for s in _WHISPER_SIZES]
+            sizes.append({"name": "← 取消", "value": "back"})
+            size = inq.select(message=f"{pick} 模型尺寸", choices=sizes, default=cfg["whisper_model_size"]).execute()
+            if size == "back":
+                continue
+            TranscriberConfigManager().update_config(pick, size)
+            print(f"✓ 已切换 {pick} / {size}", file=sys.stdout)
+            if pick == "fast-whisper":
+                if inq.confirm(message=f"现在下载 whisper-{size}？（约几十MB~数GB）", default=False).execute():
+                    try:
+                        _download_whisper(size)
+                    except Exception as e:
+                        print(f"⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）", file=sys.stdout)
+        else:
+            TranscriberConfigManager().update_config(pick)
+            print(f"✓ 已切换 {pick}", file=sys.stdout)
+
+
+def _wizard_other(inq) -> None:
+    while True:
+        from app.services.cookie_manager import CookieConfigManager
+
+        notes_dir = os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
+        pick = inq.select(
+            message="其他设置",
+            choices=[
+                {"name": "平台 Cookie（B 站等需登录内容）", "value": "cookie"},
+                {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
+                {"name": "← 返回主菜单", "value": "back"},
+            ],
+        ).execute()
+        if pick == "back":
+            return
+        if pick == "cookie":
+            platform = inq.text(message="平台（bilibili / youtube / douyin / kuaishou）").execute()
+            cookie = inq.secret(message="Cookie 值").execute()
+            if platform and cookie:
+                CookieConfigManager().set(platform, cookie)
+                print(f"✓ 已保存 {platform} 的 Cookie", file=sys.stdout)
+            else:
+                print("⚠ 未保存（平台或 Cookie 为空）", file=sys.stdout)
+        elif pick == "notes":
+            new_dir = inq.text(message="默认笔记目录（直接回车=用默认）。改后需在 shell 配置持久化 BILINOTE_NOTES_DIR").execute()
+            if new_dir:
+                os.environ["BILINOTE_NOTES_DIR"] = new_dir
+                print(f"✓ 本次已设 BILINOTE_NOTES_DIR={new_dir}", file=sys.stdout)
+
+
+def _setup_cli_fallback() -> None:
+    """无 InquirerPy 时的纯文本兜底向导（同功能，输入编号选择）。"""
+    print("=== BiliNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
+
+    provs = ProviderService.get_all_providers_safe()
+    if provs:
+        print("\n① LLM 供应商（当前）：", file=sys.stdout)
+        for i, p in enumerate(provs, 1):
+            print(f"   {i}) {p['id']}  key={'已填' if p['api_key'] else '空'}  {p['base_url']}", file=sys.stdout)
+        sel = _ask("   选择要编辑的 [1-%d]，0 跳过" % len(provs), default="0")
+        if sel.isdigit() and 1 <= int(sel) <= len(provs):
+            pid = provs[int(sel) - 1]["id"]
+            key = _ask_secret(f"   新的 API key（{pid}，留空不变）")
             if key:
                 ProviderService.update_provider(pid, {"api_key": key})
-                print(f"   ✓ 已保存 {name} 的 key（{pid}）", file=sys.stdout)
-            else:
-                print(f"   ⚠ 未输入 key，可稍后 `bilinote-mcp providers set {pid} --api-key '...'` 补充", file=sys.stdout)
-    else:
+                print(f"   ✓ 已更新 {pid} 的 key", file=sys.stdout)
+    if _ask("   新增中转站/自建供应商？[y/N]", default="N").lower() == "y":
         name = _ask("   供应商名称", default="我的中转站")
-        base_url = _ask("   base_url（如 https://relay.example.com/v1）")
+        base_url = _ask("   base_url")
         key = _ask_secret("   API key")
-        if not name or not base_url or not key:
-            print("   ⚠ 信息不完整，跳过新增", file=sys.stdout)
-        else:
+        if name and base_url and key:
             new_id = ProviderService.add_provider(name=name, api_key=key, base_url=base_url, logo="custom", type_="custom")
-            print(f"   ✓ 已新增 {name} → id={new_id}", file=sys.stdout)
+            print(f"   ✓ 已新增 → id={new_id}", file=sys.stdout)
 
-    # ---------- ② 语音转写引擎 ----------
-    print("\n② 选择语音转写引擎：", file=sys.stdout)
-    print("   1) fast-whisper（本地离线，免费）", file=sys.stdout)
-    print("   2) groq（云端，快，需 groq 的 key）", file=sys.stdout)
-    print("   3) bcut / kuaishou（云端，免 key）", file=sys.stdout)
-    print("   4) mlx-whisper（仅 macOS Apple Silicon，本地快）", file=sys.stdout)
-    t_choice = _ask("选择 [1-4]", default="1")
-
-    if t_choice == "2":
-        TranscriberConfigManager().update_config("groq")
-        print("   ✓ 已切换到 groq（需 groq 供应商已配 key）", file=sys.stdout)
-    elif t_choice == "3":
-        TranscriberConfigManager().update_config("bcut")
-        print("   ✓ 已切换到 bcut", file=sys.stdout)
-    elif t_choice == "4":
-        size = _ask("   mlx 模型尺寸", default="small")
-        TranscriberConfigManager().update_config("mlx-whisper", size)
-        print(f"   ✓ 已切换到 mlx-whisper / {size}", file=sys.stdout)
-    else:  # fast-whisper
-        size = _ask("   whisper 模型尺寸（tiny/base/small/medium/large-v3）", default="small")
+    print("\n② 语音转写引擎：", file=sys.stdout)
+    print("   1) fast-whisper  2) groq  3) bcut  4) kuaishou  5) mlx-whisper", file=sys.stdout)
+    t = _ask("   选择 [1-5]", default="1")
+    engines = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
+    eng = engines[int(t) - 1] if t.isdigit() and 1 <= int(t) <= 5 else "fast-whisper"
+    size = None
+    if eng in ("fast-whisper", "mlx-whisper"):
+        size = _ask("   模型尺寸（tiny/base/small/medium/large-v3/large-v3-turbo）", default="small")
         if size not in _WHISPER_SIZES:
             size = "small"
-        TranscriberConfigManager().update_config("fast-whisper", size)
-        print(f"   ✓ 已切换到 fast-whisper / {size}", file=sys.stdout)
-        if _ask(f"   现在下载 whisper-{size} 模型？（首次约几十MB~数GB）[y/N]", default="N").lower() == "y":
-            try:
-                from app.transcriber.whisper_models import resolve_whisper_model
-                from faster_whisper import WhisperModel
-                from app.utils.path_helper import get_model_dir
-
-                print(f"   正在下载 whisper-{size}，请稍候…", file=sys.stdout)
-                WhisperModel(
-                    model_size_or_path=resolve_whisper_model(size),
-                    device="cpu", compute_type="int8",
-                    download_root=get_model_dir("whisper"),
-                )
-                print(f"   ✓ whisper-{size} 下载完成", file=sys.stdout)
-            except Exception as e:
-                print(f"   ⚠ 下载失败：{e}（可稍后调用 download_transcriber_model 重试）", file=sys.stdout)
+    TranscriberConfigManager().update_config(eng, size)
+    print(f"   ✓ 已切换 {eng} / {size}", file=sys.stdout)
+    if eng == "fast-whisper" and _ask(f"   下载 whisper-{size}？[y/N]", default="N").lower() == "y":
+        try:
+            _download_whisper(size)
+        except Exception as e:
+            print(f"   ⚠ 下载失败：{e}", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
-    print("· 验证：`bilinote-mcp providers list` 看 key 是否已填", file=sys.stdout)
-    print("· 生成笔记时告诉 agent provider_id 与 model_name 即可", file=sys.stdout)
 
 
 def _providers_cli(argv) -> None:
@@ -230,19 +356,8 @@ def _transcriber_cli(argv) -> None:
         if opts.engine == "fast-whisper":
             print(f"（本地模型还需下载：bilinote-mcp transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
     elif opts.cmd == "download":
-        size = opts.size
-        print(f"正在下载 whisper-{size}（首次约几十MB~数GB，请稍候）…", file=sys.stdout)
         try:
-            from app.transcriber.whisper_models import resolve_whisper_model
-            from faster_whisper import WhisperModel
-            from app.utils.path_helper import get_model_dir
-
-            WhisperModel(
-                model_size_or_path=resolve_whisper_model(size),
-                device="cpu", compute_type="int8",
-                download_root=get_model_dir("whisper"),
-            )
-            print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
+            _download_whisper(opts.size)
         except Exception as e:
             print(f"✗ 下载失败: {e}（可稍后重试或换小尺寸）", file=sys.stderr)
             sys.exit(1)

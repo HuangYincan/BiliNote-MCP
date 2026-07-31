@@ -93,13 +93,17 @@ cd BiliNote-MCP && ./install.sh
 
 > 安装只让 MCP / Skill 跑起来；**LLM API key 和语音转写引擎需单独配置**（key 是你的、模型要选）。所有方式共用同一数据目录（`~/.local/share/bilinote-mcp/`），配好即会话内生效。
 
-### 交互向导 `setup`（推荐）
+### 交互向导 `setup`（推荐，随时可反复进入修改）
 
 ```bash
 bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup
 ```
 
-一次完成：选 LLM 供应商（隐藏输入 key）→ 选转写引擎 + 模型尺寸 →（可选）立即下载 whisper 模型。
+**方向键选择 + 高亮**，主菜单里随时切换配置项、可返回上一步；**不是一次性程序**，随时重跑即可改配置：
+
+- **① LLM 供应商**：选一个填/改 key、改 base_url，或新增中转站；
+- **② 语音转写引擎**：选引擎 + 模型尺寸，可选立即下载 whisper 模型；
+- **③ 其他**：平台 Cookie、默认笔记位置。
 
 ### 手动 CLI（key 不进对话）
 

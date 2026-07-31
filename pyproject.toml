@@ -30,6 +30,8 @@ dependencies = [
     "youtube-transcript-api>=1.0.0",
     # 抖音 ABogus 签名（douyin_helper/abogus.py）
     "gmssl>=3.2.2",
+    # 交互式 setup 向导（方向键选择/高亮；无则回退纯文本提示）
+    "InquirerPy>=0.3.4",
 ]
 
 [project.optional-dependencies]
