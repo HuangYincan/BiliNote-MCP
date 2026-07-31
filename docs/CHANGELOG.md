@@ -18,6 +18,7 @@
   - `plugin.json` 故意不写 version → 每次 commit 即新版本（自动更新）；
   - `install.sh` 改用 marketplace 优先、本地链接兜底；
   - `.claude/settings.json` 加入 gitignore（机器本地插件状态不入库）。
+  - 修复：仓库根 `.mcp.json` 与 marketplace 的 mcpServers 声明冲突（插件安装时会加载插件根的 `.mcp.json`，注册出错误的 `uv run` server）→ 移到 `examples/mcp.example.json` 作为手动示例。
 
 ## 节点 1：仓库脚手架（2026-07-31）
 
