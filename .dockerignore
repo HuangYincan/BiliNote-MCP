@@ -1,0 +1,13 @@
+.git
+.venv
+data
+models
+note_results
+config
+logs
+dist
+build
+*.db
+*.pyc
+__pycache__
+.github
