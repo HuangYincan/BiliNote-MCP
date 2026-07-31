@@ -42,6 +42,10 @@ bilinote-mcp setup
 - **Python ≥ 3.11，<3.14**（推荐 3.12，`.python-version` 已锁定）
 - **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`（Linux：`apt install ffmpeg`）
 - **LLM 供应商 API Key**（见[配置](#配置装完必做)）
+- **本地转写**：本地 whisper 需先下载模型 `bilinote-mcp transcriber download <size>`（tiny/base/small/medium/large-v3/large-v3-turbo），或改用云端 `groq` / `bcut`（免下载）
+- **GPU 加速（可选）**：
+  - **NVIDIA / Linux**：whisper 默认 CPU；想用 CUDA，装工具时带 `--with torch`（CUDA 版 torch），推理时自动检测 GPU，否则回退 CPU
+  - **macOS Apple Silicon**：用 `mlx-whisper` 走 GPU —— 装工具时 `--with mlx-whisper`，切引擎 `bilinote-mcp transcriber set mlx-whisper --size small`
 - **CLI 命令可用形式**：正文里的 `bilinote-mcp ...` 是简写，等价于：
   - 有 uv：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（`--from` 必须带 `git+` 前缀）
   - 方式四（pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp ...`
