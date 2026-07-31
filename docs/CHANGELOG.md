@@ -2,6 +2,10 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-07-31）
+
+- 修复用户侧 MCP 注册：`--from` 需带 `git+` 前缀（`git+https://...`），且用 `claude mcp add --scope user` 注册到用户级。
+
 ## 发布后维护（2026-07-31）
 
 - 首次推送到 GitHub（`HuangYincan/BiliNote-MCP`，PUBLIC）。
