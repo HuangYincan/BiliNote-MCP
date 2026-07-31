@@ -582,9 +582,18 @@ def _login_cli(argv) -> None:
             data = poll.get("data") or {}
             st = data.get("code", 0)
             if st == 0 and data.get("url"):
-                # 登录成功，从 url 提取 SESSDATA
+                # 登录成功。url 可能直接带 SESSDATA，也可能是 crossDomain ticket（需跟随拿 Set-Cookie）
+                sess = ""
                 qs = urllib.parse.parse_qs(urllib.parse.urlparse(data["url"]).query)
                 sess = qs.get("SESSDATA", [""])[0]
+                if not sess:
+                    try:
+                        s = requests.Session()
+                        s.headers.update(_UA)
+                        s.get(data["url"], timeout=10)
+                        sess = s.cookies.get("SESSDATA") or ""
+                    except Exception as e:
+                        print(f"跟随登录 URL 拿 cookie 失败: {e}", file=sys.stderr)
                 if not sess:
                     print(f"登录成功但未取到 SESSDATA：{data['url']}", file=sys.stderr)
                     sys.exit(1)
@@ -594,9 +603,10 @@ def _login_cli(argv) -> None:
                 print(f"{_GREEN}✓ 已保存 B 站 SESSDATA —— AI 字幕可直接用了{_RESET}", file=sys.stdout)
                 print("（下次生成 B 站笔记会优先用 AI 字幕、跳过语音识别）", file=sys.stdout)
                 return
-            if st == 86101 and last_status != 86101:
+            # B 站状态码：86101=未扫码（安静等待）；86090=已扫码待确认；86038=过期
+            if st == 86090 and last_status != 86090:
                 print("已扫码，请在手机上确认登录…", file=sys.stdout)
-                last_status = 86101
+                last_status = 86090
             elif st == 86038:
                 print(f"{_YELLOW}二维码已过期，请重新运行 `bilinote-mcp login bilibili`{_RESET}", file=sys.stdout)
                 return
