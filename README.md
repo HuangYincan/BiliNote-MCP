@@ -45,7 +45,7 @@ git clone https://github.com/HuangYincan/BiliNote-MCP.git
 cd BiliNote-MCP && ./install.sh
 ```
 
-`install.sh`：创建 venv → 安装依赖 → 注册 MCP → 安装 Skill（同 marketplace 方式）。
+`install.sh`：创建 venv → 安装依赖 → 注册 MCP → 安装 Skill（同 marketplace 方式）→ **自动弹出 `bilinote-mcp setup` 交互向导**（隐藏输入 LLM API key + 选语音转写引擎，可选立即下载 whisper 模型）。非交互终端会跳过，可稍后手动跑 `bilinote-mcp setup`。
 
 > 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
 
@@ -86,7 +86,7 @@ claude plugin install bilinote@bilinote       # 幂等，重装/升级插件到�
 - LLM 供应商 API Key（通过 CLI / `update_provider` 工具或复用已有 BiliNote 数据库配置）
 - 本地转写需下载 whisper 模型（`download_transcriber_model`），或改用云端 groq
 - macOS Apple Silicon 想用 **MLX Whisper**（更快的本地转写）：mlx-whisper 是可选依赖，装工具时带上：`uv tool install --force --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`
-- **CLI 命令可用形式**：本文档里的 `bilinote-mcp providers ...` 需要它已在 PATH（`uv tool install` + `uv tool update-shell` 之后才有）。**PATH 无关的等价写法**：
+- **CLI 命令可用形式**：本文档里的 `bilinote-mcp providers ...` / `bilinote-mcp setup` 需要它已在 PATH（`uv tool install` + `uv tool update-shell` 之后才有）。**PATH 无关的等价写法**：
   - 有 uv：`uvx --from https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp providers list`
   - 无 uv（方式四，pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp providers list`
 

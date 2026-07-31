@@ -31,9 +31,118 @@ DATA_DIR = setup_environment()
 from app.db.init_db import init_db
 from app.db.provider_dao import seed_default_providers
 from app.services.provider import ProviderService
+from app.services.transcriber_config_manager import TranscriberConfigManager
 
 init_db()
 seed_default_providers()
+
+_BUILTIN_PROVIDERS = {
+    "1": ("deepseek", "DeepSeek", "https://api.deepseek.com"),
+    "2": ("openai", "OpenAI", "https://api.openai.com/v1"),
+    "3": ("qwen", "Qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    "4": ("groq", "Groq", "https://api.groq.com/openai/v1"),
+    "5": ("ollama", "Ollama（本地免费，无需 key）", "http://127.0.0.1:11434/v1"),
+}
+_WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3")
+
+
+def _ask(prompt: str, default: str = "") -> str:
+    """交互式提问；非交互环境（管道）下返回默认值。"""
+    suffix = f" [{default}]" if default else ""
+    try:
+        val = input(f"{prompt}{suffix}: ")
+    except EOFError:
+        return default
+    val = val.strip()
+    return val or default
+
+
+def _ask_secret(prompt: str) -> str:
+    """隐藏输入的 API key（不经任何对话/日志）。"""
+    import getpass
+
+    try:
+        return getpass.getpass(f"{prompt}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+
+def _setup_cli() -> None:
+    """交互式初始化：配置 LLM 供应商 + 语音转写引擎。"""
+    print("=== BiliNote-MCP 初始化配置 ===", file=sys.stdout)
+    print("API key 为隐藏输入，不经过 agent 对话。随时 Ctrl-C 取消。", file=sys.stdout)
+
+    # ---------- ① LLM 供应商 ----------
+    print("\n① 选择 LLM 供应商：", file=sys.stdout)
+    for k, (_, name, url) in _BUILTIN_PROVIDERS.items():
+        print(f"   {k}) {name}  {url}", file=sys.stdout)
+    print("   6) 中转站 / 自建网关（自定义 base_url）", file=sys.stdout)
+    choice = _ask("选择 [1-6]", default="1")
+
+    if choice in _BUILTIN_PROVIDERS:
+        pid, name, url = _BUILTIN_PROVIDERS[choice]
+        if choice == "5":  # ollama
+            print(f"   ✓ 使用 {name}（无需 key，请确保本机已启动 ollama）", file=sys.stdout)
+        else:
+            key = _ask_secret(f"   输入 {name} 的 API key")
+            if key:
+                ProviderService.update_provider(pid, {"api_key": key})
+                print(f"   ✓ 已保存 {name} 的 key（{pid}）", file=sys.stdout)
+            else:
+                print(f"   ⚠ 未输入 key，可稍后 `bilinote-mcp providers set {pid} --api-key '...'` 补充", file=sys.stdout)
+    else:
+        name = _ask("   供应商名称", default="我的中转站")
+        base_url = _ask("   base_url（如 https://relay.example.com/v1）")
+        key = _ask_secret("   API key")
+        if not name or not base_url or not key:
+            print("   ⚠ 信息不完整，跳过新增", file=sys.stdout)
+        else:
+            new_id = ProviderService.add_provider(name=name, api_key=key, base_url=base_url, logo="custom", type_="custom")
+            print(f"   ✓ 已新增 {name} → id={new_id}", file=sys.stdout)
+
+    # ---------- ② 语音转写引擎 ----------
+    print("\n② 选择语音转写引擎：", file=sys.stdout)
+    print("   1) fast-whisper（本地离线，免费）", file=sys.stdout)
+    print("   2) groq（云端，快，需 groq 的 key）", file=sys.stdout)
+    print("   3) bcut / kuaishou（云端，免 key）", file=sys.stdout)
+    print("   4) mlx-whisper（仅 macOS Apple Silicon，本地快）", file=sys.stdout)
+    t_choice = _ask("选择 [1-4]", default="1")
+
+    if t_choice == "2":
+        TranscriberConfigManager().update_config("groq")
+        print("   ✓ 已切换到 groq（需 groq 供应商已配 key）", file=sys.stdout)
+    elif t_choice == "3":
+        TranscriberConfigManager().update_config("bcut")
+        print("   ✓ 已切换到 bcut", file=sys.stdout)
+    elif t_choice == "4":
+        size = _ask("   mlx 模型尺寸", default="small")
+        TranscriberConfigManager().update_config("mlx-whisper", size)
+        print(f"   ✓ 已切换到 mlx-whisper / {size}", file=sys.stdout)
+    else:  # fast-whisper
+        size = _ask("   whisper 模型尺寸（tiny/base/small/medium/large-v3）", default="small")
+        if size not in _WHISPER_SIZES:
+            size = "small"
+        TranscriberConfigManager().update_config("fast-whisper", size)
+        print(f"   ✓ 已切换到 fast-whisper / {size}", file=sys.stdout)
+        if _ask(f"   现在下载 whisper-{size} 模型？（首次约几十MB~数GB）[y/N]", default="N").lower() == "y":
+            try:
+                from app.transcriber.whisper_models import resolve_whisper_model
+                from faster_whisper import WhisperModel
+                from app.utils.path_helper import get_model_dir
+
+                print(f"   正在下载 whisper-{size}，请稍候…", file=sys.stdout)
+                WhisperModel(
+                    model_size_or_path=resolve_whisper_model(size),
+                    device="cpu", compute_type="int8",
+                    download_root=get_model_dir("whisper"),
+                )
+                print(f"   ✓ whisper-{size} 下载完成", file=sys.stdout)
+            except Exception as e:
+                print(f"   ⚠ 下载失败：{e}（可稍后调用 download_transcriber_model 重试）", file=sys.stdout)
+
+    print("\n=== 配置完成 ===", file=sys.stdout)
+    print("· 验证：`bilinote-mcp providers list` 看 key 是否已填", file=sys.stdout)
+    print("· 生成笔记时告诉 agent provider_id 与 model_name 即可", file=sys.stdout)
 
 
 def _providers_cli(argv) -> None:
@@ -87,9 +196,12 @@ def _providers_cli(argv) -> None:
 
 
 def main() -> None:
-    """入口：providers 子命令走轻量 CLI，其余进入 MCP server（stdio）。"""
+    """入口：providers / setup 走轻量 CLI，其余进入 MCP server（stdio）。"""
     if len(sys.argv) > 1 and sys.argv[1] == "providers":
         _providers_cli(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        _setup_cli()
         return
     # MCP 模式：懒加载完整流水线（server.py）
     from bilinote_mcp.server import main as _server_main

@@ -53,9 +53,15 @@ else
 fi
 
 echo ""
-echo "==> 4/4 完成。使用前检查："
-echo "  1) FFmpeg：brew install ffmpeg（缺失时 health_check 会报告）"
-echo "  2) LLM 供应商：list_providers / add_provider（DeepSeek/OpenAI/…）"
-echo "  3) 转写引擎：本地 download_transcriber_model('tiny')，或云端 set_transcriber('groq')"
+echo "==> 4/4 初始化配置（LLM 供应商 + 语音转写引擎）"
+if [ -t 0 ]; then
+  "$BIN" setup
+else
+  echo "（非交互终端，跳过。可稍后执行：$BIN setup）"
+fi
+
 echo ""
-echo "  验证：claude mcp list && health_check"
+echo "==> 安装完成。验证："
+echo "  claude mcp list        # 应看到 bilinote"
+echo "  $BIN providers list    # 确认 LLM key 已填"
+echo "  health_check           # ffmpeg / db / whisper 状态"
