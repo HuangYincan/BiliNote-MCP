@@ -60,6 +60,14 @@ claude plugin install bilinote@bilinote
 
 两条命令同时装好 **Skill + MCP server**（MCP 走 `uvx`，每次会话自动拉最新 commit）。装完重启会话（或 `/reload-plugins`）。运行数据统一在 `~/.local/share/bilinote-mcp/`。
 
+> **插件默认的 MCP 不含 `mlx-whisper`**（可选依赖，仅 macOS；默认加会让 Linux/Windows 装不上）。想在 MCP 里用 mlx-whisper，手动覆盖 MCP 命令：
+>
+> ```bash
+> claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP --with mlx-whisper bilinote-mcp
+> ```
+>
+> 手动注册后会话用的是这份（`claude mcp list` 显示它即生效）。若与插件同名 `bilinote` 冲突/不生效，先 `claude mcp remove bilinote` 再重加，或改用 `~/.local/bin/bilinote-mcp`（`uv tool install --with mlx-whisper` 装的那个）作为 MCP 命令。
+
 ### 方式二：只装 MCP（不装 Skill）
 
 ```bash
