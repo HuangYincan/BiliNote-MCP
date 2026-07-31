@@ -12,24 +12,24 @@
 
 ## 快速开始
 
-### 方式一：持久安装（推荐，每次会话零开销）
+MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）。
 
-MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）。为了启动时零网络/零构建，用 `uv tool install` 一次性装好：
+### 方式一：uvx —— 自动更新（推荐）
+
+```bash
+claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
+```
+
+每次会话启动时 uvx 检查一次本仓库：**有新 commit 就自动用最新版**（重建一次，约 20s；之后缓存命中约 8s）。适合在持续迭代、想随时拿到最新能力的场景。
+
+### 方式二：`uv tool install` —— 固定版本、启动最快
 
 ```bash
 uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
 claude mcp add bilinote -- "$HOME/.local/bin/bilinote-mcp"
 ```
 
-首次安装会构建并下载依赖（几分钟，之后升级才重新构建）。重启 Claude Code 会话后 `claude mcp list` 即可看到 `bilinote`，`/mcp` 里出现 14 个工具。之后每次会话都是**直接启动进程**，不访问仓库。
-
-### 方式二：临时运行（uvx，无需克隆）
-
-```bash
-claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
-```
-
-`uvx` 直接从 GitHub 构建运行；**每次会话启动时会检查一次 git 是否更新**（commit 未变则走缓存秒启，变更才重新构建）。适合尝鲜，长期用推荐方式一。
+一次性安装后每次会话**直接启动进程（约 1s）**、不访问仓库；但版本被固定，更新需重跑上面的 `uv tool install`（或 `uv tool install --force ...`）。
 
 > 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
 
