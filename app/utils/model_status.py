@@ -35,13 +35,23 @@ def check_whisper_model_exists(model_size: str, subdir: str = "whisper") -> bool
     return legacy.exists()
 
 
+# mlx 尺寸 → HF repo_id（与 app/transcriber/mlx_whisper_transcriber.MLX_MODEL_MAP 保持一致）。
+# 这里内联是为了避免在向导/健康检查等轻量路径上 import mlx_whisper（加载 MLX 框架很重、可能卡顿）。
+_MLX_REPO_MAP = {
+    "tiny": "mlx-community/whisper-tiny-mlx",
+    "base": "mlx-community/whisper-base-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large-v1": "mlx-community/whisper-large-v1-mlx",
+    "large-v2": "mlx-community/whisper-large-v2-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+    "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+}
+
+
 def check_mlx_whisper_model_exists(model_size: str) -> bool:
     """检查指定 mlx-whisper 模型是否已下载完整（以 config.json 为判据）。"""
-    try:
-        from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
-    except Exception:
-        return False
-    repo_id = MLX_MODEL_MAP.get(model_size)
+    repo_id = _MLX_REPO_MAP.get(model_size)
     if not repo_id:
         return False
     model_dir = get_model_dir("mlx-whisper")

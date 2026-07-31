@@ -269,6 +269,7 @@ def _wizard_transcriber(inq) -> None:
                     continue
                 TranscriberConfigManager().update_config(pick, size)
                 print(f"{_GREEN}✓ 已切换 {pick} / {size}{_RESET}", file=sys.stdout)
+                print(f"{_DIM}（检查模型是否已下载…）{_RESET}", file=sys.stdout)
                 # 本地引擎：检查模型是否已下载，未下载则询问是否现在下载
                 from app.utils.model_status import check_mlx_whisper_model_exists, check_whisper_model_exists
 
@@ -278,12 +279,10 @@ def _wizard_transcriber(inq) -> None:
                     label = f"whisper-{size}"
                     mlx_missing = False
                 else:  # mlx-whisper
-                    # mlx-whisper 是可选依赖；未安装时给出明确指引，并主动问是否改用 fast-whisper
-                    try:
-                        from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP  # noqa: F401
-                        mlx_missing = False
-                    except ImportError:
-                        mlx_missing = True
+                    # mlx-whisper 是可选依赖；用 find_spec 轻量判断（避免 import mlx_whisper 卡顿）
+                    import importlib.util
+
+                    mlx_missing = importlib.util.find_spec("mlx_whisper") is None
                     if mlx_missing:
                         print(
                             f"{_YELLOW}⚠ 当前环境未装 mlx-whisper（可选依赖）。{_RESET}"
