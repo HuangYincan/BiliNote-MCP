@@ -1,6 +1,8 @@
 # BiliNote-MCP
 
-> 视频链接 → AI Markdown 笔记。基于 [BiliNote](https://github.com/JefferyHcool/BiliNote) 核心能力封装成的 **MCP 工具 + Claude Code Skill**：给 agent 一个链接，它下载、转写、总结，交回一份结构化笔记 —— 全程无需启动后端。
+**中文** · [English](README_EN.md)
+
+> 视频链接 → AI Markdown 笔记。基于 [BiliNote](https://github.com/JefferyHcool/BiliNote) 核心能力封装成的 **MCP Server（Model Context Protocol）+ Claude Code Skill**：给 agent 一个链接，它下载、转写、总结，交回一份结构化笔记 —— 全程无需启动后端。
 
 <div align="center">
 
@@ -16,7 +18,7 @@
 
 ## ✨ 特性
 
-- **🗜️ 内嵌流水线** —— 下载（yt-dlp）→ 字幕/转写（本地 faster-whisper 或云端 groq/bcut）→ LLM 总结 → Markdown 笔记。全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
+- **🗜️ 内嵌流水线** —— 下载（yt-dlp）→ 字幕/转写（本地 faster-whisper 或云端 groq/bcut）→ **视频理解（按间隔抽帧，多模态 LLM 看画面）** → LLM 总结 → Markdown 笔记。全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
 - **🧠 无 RAG** —— agent 拿到 Markdown 后自己阅读、自己回答，不需要 ChromaDB / embedding，轻量即用。
 - **📦 自包含** —— `app/` 目录复制自上游（见 [VENDOR.md](VENDOR.md)），pip / uv 一键安装。
 
