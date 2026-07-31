@@ -25,8 +25,8 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。
 3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
 4. **确认参数（用户没指定时逐项询问，给出默认值）**：
-   - **LLM 模型**：用上面确认的供应商/模型，问一句「用哪个模型」即可；
-   - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq）；
+   - **LLM 模型**：先 `list_models(provider_id)` 拿可用模型，**列出给用户选**（如 `gemini-2.5-flash` / `deepseek-chat`），**不要悄悄自己定**；
+   - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
    - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…）；
    - **是否视频理解**（看画面）：默认否；要则配多模态模型 + `video_understanding=True, video_interval=6, grid_size=[3,3]`；
    - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
@@ -58,7 +58,8 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | `health_check` 显示 `ffmpeg: missing` | 让用户 `brew install ffmpeg`（Linux: `apt install ffmpeg`），装完再跑 |
 | `generate_note` 报「需要 provider_id」 | 先 `list_providers` 看内置供应商；空 key 用 `update_provider` 填，自建用 `add_provider` |
 | 报「供应商还没有可用模型」 | `list_models(provider_id)` 实时拉取，或 `add_model` 手动加模型名 |
-| 转写一直失败、提示模型未下载 | `download_transcriber_model("tiny")` 后重试，或 `set_transcriber("groq")` 走云端 |
+| 转写一直失败、提示模型未下载 | 问用户：`bilinote-mcp transcriber download <size>` 下载，或切云端（`set_transcriber("bcut"/"groq")`）—— 不要静默切换 |
 | 任务卡在 `INITIALIZING` | 首次使用 fast-whisper 正在下载模型，耐心等；模型很大时可改用云端转写 |
+| B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 配置 Cookie 后重试 |
 | 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
