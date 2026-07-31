@@ -78,10 +78,16 @@ claude plugin install bilinote@bilinote       # 幂等，重装/升级插件到�
 
 ## 前提
 
+- **uv**（Python 包管理器，必需 —— uvx/uv tool 方式装 MCP 和 CLI 都靠它）：
+  `curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `brew install uv`
+  > 没有 uv？走「方式四：克隆 + `install.sh`」（脚本内置 pip 兜底，不依赖 uv）。
 - Python ≥ 3.11，<3.14（推荐 3.12）
 - **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`
-- LLM 供应商 API Key（通过 `add_provider` 工具或复用已有 BiliNote 数据库配置）
+- LLM 供应商 API Key（通过 CLI / `update_provider` 工具或复用已有 BiliNote 数据库配置）
 - 本地转写需下载 whisper 模型（`download_transcriber_model`），或改用云端 groq
+- **CLI 命令可用形式**：本文档里的 `bilinote-mcp providers ...` 需要它已在 PATH（`uv tool install` + `uv tool update-shell` 之后才有）。**PATH 无关的等价写法**：
+  - 有 uv：`uvx --from https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp providers list`
+  - 无 uv（方式四，pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp providers list`
 
 ## 工具一览
 

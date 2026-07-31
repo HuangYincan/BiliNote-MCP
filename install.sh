@@ -31,20 +31,25 @@ else
   echo "  { \"mcpServers\": { \"bilinote\": { \"command\": \"$BIN\" } } }"
 fi
 
-echo "==> 3/4 安装 Skill（优先 marketplace，失败回退本地链接）"
-if command -v claude >/dev/null 2>&1; then
+echo "==> 3/4 安装 Skill"
+HAVE_UV="0"
+command -v uv >/dev/null 2>&1 && HAVE_UV="1"
+install_skill_local() {
+  mkdir -p "$HOME/.claude/skills"
+  ln -sfn "$REPO_DIR/skills/bilinote" "$HOME/.claude/skills/bilinote"
+  echo "已本地链接：$HOME/.claude/skills/bilinote"
+}
+if [ "$HAVE_UV" = "1" ] && command -v claude >/dev/null 2>&1; then
+  # marketplace 方式（插件里的 MCP server 走 uvx，需要 uv）
   if claude plugin marketplace add HuangYincan/BiliNote-MCP >/dev/null 2>&1 \
      && claude plugin install bilinote@bilinote >/dev/null 2>&1; then
     echo "Skill 已通过 marketplace 安装（bilinote@bilinote）"
   else
-    mkdir -p "$HOME/.claude/skills"
-    ln -sfn "$REPO_DIR/skills/bilinote" "$HOME/.claude/skills/bilinote"
-    echo "已本地链接：$HOME/.claude/skills/bilinote"
+    install_skill_local
   fi
 else
-  mkdir -p "$HOME/.claude/skills"
-  ln -sfn "$REPO_DIR/skills/bilinote" "$HOME/.claude/skills/bilinote"
-  echo "已本地链接：$HOME/.claude/skills/bilinote"
+  # 无 uv：跳过 marketplace（避免注册出无法启动的 uvx MCP），只用本地链接
+  install_skill_local
 fi
 
 echo ""
