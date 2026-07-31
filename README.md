@@ -227,7 +227,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
 | `HF_ENDPOINT` | HuggingFace 镜像（国内下载慢/卡时用） | 官方 `https://huggingface.co`；国内可 `https://hf-mirror.com` |
 
-**多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务，客户端也支持同一消息并行提交多个 `generate_note`）。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，多任务并发时会让对话看起来卡住。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
+**多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务，任务在服务端后台并发执行）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— **要一次跑多个任务，请一次发一个 `generate_note`**（拿 task_id 再发下一个），任务照常在服务端并发跑。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，多任务并发时会让对话看起来卡住。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
 
 ## 更新
 
