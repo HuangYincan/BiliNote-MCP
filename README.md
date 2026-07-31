@@ -156,7 +156,8 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 2. `list_providers` —— 确认供应商 key=已填（看不到明文）；没有就先用 CLI 配；
 3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
 4. `get_task_status(task_id)` 轮询（或 `wait_for_note`），等到 `SUCCESS`；
-5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG。
+5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG；
+6. **问你是否要根据笔记 + 提取的字幕（`result.transcript`）做后续优化**（补齐细节/修正不一致/增强结构）—— agent 侧精修，不新增工具。
 
 ### 手动工具速查（非敏感配置）
 

@@ -45,6 +45,10 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 6. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
 7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
+9. **后续优化（必须问，不调工具）**：**问用户是否要根据已生成的笔记 + 提取的字幕（`result.transcript` 完整转写）做后续优化** —— 补齐遗漏细节、修正与字幕不一致处、重排/增强结构。用户要优化时：
+   - 读 `result.markdown` 与 `result.transcript`，**直接在回答里产出优化后的笔记**（原笔记保留给用户对比）；
+   - **转写可能很长**（2 小时视频的完整字幕超出单次上下文）：先如实告诉用户这个限制，改为**按关键章节 / 已读部分精修**，或请用户指定要重点优化的章节；
+   - 优化**不写回** `note_dir`（那是原始产物）；要落盘先问用户存哪。
 
 ## 配置要点
 
