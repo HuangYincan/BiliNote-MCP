@@ -58,12 +58,13 @@ def apply_bilibili_dm_img_patch() -> bool:
     if getattr(original, '_bili_dm_patched', False):
         return True
 
-    def _patched_download_playinfo(self, bvid, cid, headers=None, query=None):
+    def _patched_download_playinfo(self, bvid, cid, headers=None, query=None, fatal=True):
         # dm_* are merged into the query that the original method signs via
         # _sign_wbi; caller-supplied query params (e.g. try_look/qn) take
         # precedence over the injected dummies.
+        # fatal 是较新 yt-dlp 加入的 kwarg，必须透传，否则调用方传 fatal=True 会 TypeError。
         merged_query = {**build_dm_img_params(), **(query or {})}
-        return original(self, bvid, cid, headers=headers, query=merged_query)
+        return original(self, bvid, cid, headers=headers, query=merged_query, fatal=fatal)
 
     _patched_download_playinfo._bili_dm_patched = True
     BilibiliBaseIE._download_playinfo = _patched_download_playinfo
