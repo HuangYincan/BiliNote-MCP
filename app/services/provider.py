@@ -106,7 +106,9 @@ class ProviderService:
     def get_all_providers_safe():
         rows = get_all_providers()
 
-        return [ProviderService.serialize_provider(row) for row in rows] if (rows) else []
+        # 注意：必须用 serialize_provider_safe（掩码 api_key）。上游此处在用
+        # serialize_provider 的 bug 已在本仓库修复，否则 list_providers 会泄完整 key。
+        return [ProviderService.serialize_provider_safe(row) for row in rows] if (rows) else []
     @staticmethod
     def get_provider_by_name(name: str):
         row = get_provider_by_name(name)
@@ -132,7 +134,12 @@ class ProviderService:
             # 如果用户未重新输入直接保存，带星号的值不应覆盖原 key。
             if 'api_key' in filtered_data and '*' in str(filtered_data.get('api_key', '')):
                 filtered_data.pop('api_key')
-            print('更新模型供应商',filtered_data)
+            # 打码 api_key，避免 key 泄进日志
+            _log_data = {
+                k: (str(v)[:4] + '****' if k == 'api_key' and v else v)
+                for k, v in filtered_data.items()
+            }
+            print('更新模型供应商', _log_data)
             update_provider(id, **filtered_data)
             # 获取更新后的供应商信息
             updated_provider = get_provider_by_id(id)

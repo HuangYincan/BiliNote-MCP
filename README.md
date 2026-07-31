@@ -126,7 +126,20 @@ list_models("deepseek")                                 # 确认 models 里有 d
 generate_note(video_url="https://www.bilibili.com/video/BVxxxx", provider_id="deepseek", model_name="deepseek-chat")
 ```
 
-其他内置供应商同理：openai → `https://api.openai.com/v1`、qwen → `https://dashscope.aliyuncs.com/compatible-mode/v1`（都是 OpenAI 兼容协议，`type` 只是标识）。自建网关等非内置的用 `add_provider(name, api_key, base_url, type)` 新增。
+其他内置供应商同理：openai → `https://api.openai.com/v1`、qwen → `https://dashscope.aliyuncs.com/compatible-mode/v1`（都是 OpenAI 兼容协议，`type` 只是标识）。
+
+**中转站 / 自建网关**：用 `add_provider` 填它给你的 base_url 和 key：
+
+```text
+add_provider(name="我的中转站", api_key="sk-中转站发的key", base_url="https://relay.example.com/v1", type="custom")
+list_models("返回的id")          # 实时拉中转站的模型；拉不到就 add_model 手动加
+```
+
+### 没有 LLM API key？
+
+- **本地免费（推荐）**：装 [Ollama](https://ollama.com) 并 `ollama pull llama3`。内置 `ollama` 供应商已预置（base_url `http://localhost:11434/v1`，**无需 key**），`list_models("ollama")` 看到模型即可 `generate_note(provider_id="ollama", model_name="llama3")`。
+- **免费额度**：Groq / DeepSeek 等有免费 tier，注册后 `update_provider` 填 key 即可。
+- 直接对 agent 说「我没有 LLM key」，它会先查 Ollama 是否可用，再引导你注册。
 
 ### 例二：切换语音转写引擎
 
@@ -147,6 +160,12 @@ get_transcriber_config()           # ready=true 即就绪
 
 > whisper 模型尺寸（约）：tiny 75MB / base 145MB / small 460MB / medium 1.5GB / large-v3 3GB。够用选 small 及以下，追求精度再上 medium+。
 > 首次用 fast-whisper 时任务会卡在 `INITIALIZING`（正在下载模型），属正常。
+
+## 安全说明（API Key）
+
+- **存哪**：key 只存在本地 SQLite（`~/.local/share/bilinote-mcp/bili_note.db` 或源码 `data/`），已 gitignore，**不会进 GitHub**。
+- **不外泄**：`list_providers` 只返回掩码（`sk-S***cdef`）；`add_provider` / `update_provider` 不回显 key；相关日志已打码。
+- **提醒**：key 以明文存在本地数据库（与上游 BiliNote 一致）。若机器可能被他人使用，建议后续用系统 keychain 加密存储。
 
 ## Skill（Claude Code）
 
