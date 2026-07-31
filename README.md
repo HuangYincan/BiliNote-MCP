@@ -85,6 +85,7 @@ claude plugin install bilinote@bilinote       # 幂等，重装/升级插件到�
 - **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`
 - LLM 供应商 API Key（通过 CLI / `update_provider` 工具或复用已有 BiliNote 数据库配置）
 - 本地转写需下载 whisper 模型（`download_transcriber_model`），或改用云端 groq
+- macOS Apple Silicon 想用 **MLX Whisper**（更快的本地转写）：mlx-whisper 是可选依赖，装工具时带上：`uv tool install --force --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`
 - **CLI 命令可用形式**：本文档里的 `bilinote-mcp providers ...` 需要它已在 PATH（`uv tool install` + `uv tool update-shell` 之后才有）。**PATH 无关的等价写法**：
   - 有 uv：`uvx --from https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp providers list`
   - 无 uv（方式四，pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp providers list`
