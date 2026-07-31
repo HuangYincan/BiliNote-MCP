@@ -36,6 +36,7 @@
 - **修 mlx 下载失败（numba 循环导入）**：`_download_mlx_model` 之前 import `mlx_whisper_transcriber`（其依赖链 numba 等有循环导入风险）。下载其实只需 `huggingface_hub.snapshot_download` —— 改为用内联 `MLX_REPO_MAP`，纯 HF 下载，不碰 mlx_whisper。
 - **`notes_dir` 现在总是写 note.md**：之前只有截图模式才写便携笔记，用户指定 `notes_dir` 却不插图片时笔记不会写入该目录（agent 只能手动提取）。现在指定 `notes_dir`（或截图模式）都会把 `note.md` 写到目标目录，且 `result.note_dir` 总会返回（`_run_note_task` 按 notes_dir → 截图 顺序判断）。SKILL/README 同步。
 - **B 站 AI 字幕说明 + 提示**：功能已实现（API 直拉支持 `ai_type`、yt-dlp 兜底 `writeautomaticsub`），但 B 站 AI 字幕需 **SESSDATA cookie**；无 cookie 时 API 返回空列表 → 只能走语音识别。`raw_info.subtitles={}` 只反映手动 CC（AI 字幕在 automatic_captions）。给 `download_subtitles`/`fetch_subtitles` 加了「配置 SESSDATA 即可用 AI 字幕跳过转写」的日志提示；SKILL 故障排查补对应项。
+- **B 站扫码登录 `bilinote-mcp login bilibili`**：终端渲染 ASCII 二维码（qrcode 库）→ 用户 B 站 App 扫码 → 自动轮询 → 提取并保存 SESSDATA（`CookieConfigManager`）。setup 向导「③ 其他」加「B 站扫码登录」选项。SKILL：B 站视频优先 AI 字幕，引导用户扫码/手动；README/docs 补命令与说明。已验证二维码渲染 + SESSDATA 提取保存（mock 测试）。
 
 ## 发布后维护（2026-07-31）
 

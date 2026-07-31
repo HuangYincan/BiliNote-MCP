@@ -119,6 +119,9 @@ bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whis
 bilinote-mcp transcriber set groq                               # 切云端
 bilinote-mcp transcriber download small                          # 下载 fast-whisper 模型
 bilinote-mcp transcriber download small --engine mlx-whisper     # 下载 mlx-whisper（macOS）
+
+# B 站（用 AI 字幕跳过语音识别）
+bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA（AI 字幕需登录态）
 ```
 
 **转写引擎**：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（**仅 macOS Apple Silicon**，GPU 加速）。

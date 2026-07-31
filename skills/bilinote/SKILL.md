@@ -22,7 +22,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 ## 标准工作流（给视频做笔记）
 
 1. **`health_check`** —— 确认 ffmpeg/db 就绪；若 `ffmpeg: missing` 先让用户装 FFmpeg。
-2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。
+2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。B 站视频**优先用平台字幕（含 AI 字幕）跳过语音识别**；AI 字幕需 B 站 SESSDATA cookie —— 没配时任务会走语音识别，告诉用户可 `bilinote-mcp login bilibili` 扫码自动获取（或手动填 SESSDATA），之后就能直接用 AI 字幕。
 3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
 4. **确认参数（用户没指定时逐项询问，给出默认值）**：
    - **LLM 模型**：先 `list_models(provider_id)` 拿可用模型，**列出给用户选**（如 `gemini-2.5-flash` / `deepseek-chat`），**不要悄悄自己定**；
@@ -62,6 +62,6 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | 转写一直失败、提示模型未下载 | 问用户：`bilinote-mcp transcriber download <size>` 下载，或切云端（`set_transcriber("bcut"/"groq")`）—— 不要静默切换 |
 | 任务卡在 `INITIALIZING` | 首次使用 fast-whisper 正在下载模型，耐心等；模型很大时可改用云端转写 |
 | B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 配置 Cookie 后重试 |
-| 想用 B 站 **AI 字幕**跳过语音识别 | 必须先配 cookie：`set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`（AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions，关键是 cookie） |
+| 想用 B 站 **AI 字幕**跳过语音识别 | 引导用户跑 **`bilinote-mcp login bilibili`**（终端扫码自动获取并保存 SESSDATA），或手动 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`。AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions，关键是 cookie |
 | 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |

@@ -332,7 +332,8 @@ def _wizard_other(inq) -> None:
             pick = inq.select(
                 message="选择要配置的项（← 返回）",
                 choices=[
-                    {"name": "平台 Cookie（B 站等需登录内容）", "value": "cookie"},
+                    {"name": "B 站扫码登录（自动获取 SESSDATA，AI 字幕用）", "value": "bili-login"},
+                    {"name": "平台 Cookie（手动填，B 站等需登录内容）", "value": "cookie"},
                     {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
                     {"name": "← 返回主菜单", "value": "back"},
                 ],
@@ -340,7 +341,9 @@ def _wizard_other(inq) -> None:
             ).execute()
             if pick == "back":
                 return
-            if pick == "cookie":
+            if pick == "bili-login":
+                _login_cli([])
+            elif pick == "cookie":
                 _show_header("平台 Cookie")
                 platform = inq.select(
                     message="平台",
@@ -516,14 +519,102 @@ def _transcriber_cli(argv) -> None:
             sys.exit(1)
 
 
+def _login_cli(argv) -> None:
+    """`bilinote-mcp login [bilibili]`：扫码登录 B 站，自动获取并保存 SESSDATA（AI 字幕用）。"""
+    if argv and argv[0] != "bilibili":
+        print(f"未知平台: {argv[0]}（当前支持 bilibili）", file=sys.stderr)
+        sys.exit(2)
+    import time
+    import urllib.parse
+    import requests
+
+    try:
+        import qrcode
+    except ImportError:
+        print("需要 qrcode 库：`uv sync` 后重试", file=sys.stderr)
+        sys.exit(1)
+
+    _UA = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.bilibili.com",
+    }
+    try:
+        resp = requests.get(
+            "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
+            headers=_UA, timeout=10,
+        ).json()
+        if resp.get("code") != 0:
+            print(f"生成二维码失败: {resp}", file=sys.stderr)
+            sys.exit(1)
+        qr_url = resp["data"]["url"]
+        qrcode_key = resp["data"]["qrcode_key"]
+    except Exception as e:
+        print(f"生成二维码失败（网络？）: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    _show_header("B 站扫码登录")
+    print(f"{_YELLOW}请用 B 站 App「扫一扫」扫描下方二维码（约 1 分钟内有效）{_RESET}", file=sys.stdout)
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+    try:
+        qr.print_ascii(out=sys.stdout, invert=True)
+    except TypeError:
+        qr.print_ascii(invert=True)
+    print("", file=sys.stdout)
+
+    last_status = None
+    try:
+        while True:
+            time.sleep(2)
+            try:
+                poll = requests.get(
+                    "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
+                    params={"qrcode_key": qrcode_key},
+                    headers=_UA, timeout=10,
+                ).json()
+            except Exception as e:
+                print(f"轮询失败（网络？）: {e}", file=sys.stderr)
+                continue
+            data = poll.get("data") or {}
+            st = data.get("code", 0)
+            if st == 0 and data.get("url"):
+                # 登录成功，从 url 提取 SESSDATA
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(data["url"]).query)
+                sess = qs.get("SESSDATA", [""])[0]
+                if not sess:
+                    print(f"登录成功但未取到 SESSDATA：{data['url']}", file=sys.stderr)
+                    sys.exit(1)
+                from app.services.cookie_manager import CookieConfigManager
+
+                CookieConfigManager().set("bilibili", f"SESSDATA={sess}")
+                print(f"{_GREEN}✓ 已保存 B 站 SESSDATA —— AI 字幕可直接用了{_RESET}", file=sys.stdout)
+                print("（下次生成 B 站笔记会优先用 AI 字幕、跳过语音识别）", file=sys.stdout)
+                return
+            if st == 86101 and last_status != 86101:
+                print("已扫码，请在手机上确认登录…", file=sys.stdout)
+                last_status = 86101
+            elif st == 86038:
+                print(f"{_YELLOW}二维码已过期，请重新运行 `bilinote-mcp login bilibili`{_RESET}", file=sys.stdout)
+                return
+    except KeyboardInterrupt:
+        print("（已取消）", file=sys.stdout)
+
+
 def main() -> None:
-    """入口：providers / setup / transcriber 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
-    known = ("providers", "setup", "transcriber")
+    """入口：providers / setup / transcriber / login 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
+    known = ("providers", "setup", "transcriber", "login")
     if len(sys.argv) > 1 and sys.argv[1] in known:
-        if sys.argv[1] == "providers":
+        cmd = sys.argv[1]
+        if cmd == "providers":
             _providers_cli(sys.argv[2:])
-        elif sys.argv[1] == "setup":
+        elif cmd == "setup":
             _setup_cli()
+        elif cmd == "login":
+            _login_cli(sys.argv[2:])
         else:
             _transcriber_cli(sys.argv[2:])
         return

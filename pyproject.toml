@@ -32,6 +32,8 @@ dependencies = [
     "gmssl>=3.2.2",
     # 交互式 setup 向导（方向键选择/高亮；无则回退纯文本提示）
     "InquirerPy>=0.3.4",
+    # B 站扫码登录（终端 ASCII 二维码）
+    "qrcode>=8.0",
 ]
 
 [project.optional-dependencies]
