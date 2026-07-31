@@ -123,6 +123,11 @@ def _run_note_task(task_id: str, **params) -> None:
             "transcript": asdict(result.transcript) if result.transcript else None,
             "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
         }
+        # 便携笔记（截图模式）：note.md + Assets/ 若写出，返回其所在目录
+        if "screenshot" in (params.get("_format") or []):
+            note_dir = Path(params["notes_dir"]) if params.get("notes_dir") else (NOTE_OUTPUT_DIR / task_id)
+            if (note_dir / "note.md").exists():
+                payload["note_dir"] = str(note_dir)
         (NOTE_OUTPUT_DIR / f"{task_id}.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
@@ -180,6 +185,7 @@ def generate_note(
     video_understanding: bool = False,
     video_interval: int = 0,
     grid_size: Optional[List[int]] = None,
+    notes_dir: Optional[str] = None,
 ) -> str:
     """提交一个视频链接/本地文件，异步生成 AI Markdown 笔记。
 
@@ -189,9 +195,13 @@ def generate_note(
     - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增）；
     - model_name: 省略时取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
-    - style: 输出风格（minimal/detailed/academic/tutorial/xiaohongshu 等）。
+    - style: 输出风格（minimal/detailed/academic/tutorial/xiaohongshu 等）；
+    - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；
+    - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
+    - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
 
-    返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果。
+    返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果；
+    SUCCESS 时 result.note_dir 指向便携笔记目录。
     """
     if not provider_id:
         raise ValueError("需要 provider_id（先调用 list_providers 查看，或 add_provider 新增 LLM 供应商）")
@@ -229,6 +239,7 @@ def generate_note(
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],
+        notes_dir=notes_dir or os.environ.get("BILINOTE_NOTES_DIR") or None,
     )
     _pool.submit(_run_note_task, task_id, **params)
     logger.info(f"已提交任务 task_id={task_id} platform={platform} model={model_name}")

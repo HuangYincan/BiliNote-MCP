@@ -150,11 +150,24 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
 - 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
 
+### 进阶：图片插入（便携笔记）
+
+想让笔记带截图、且能整体搬迁，`generate_note` 加：
+
+```text
+generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, format=["screenshot"])
+```
+
+- 产出**便携笔记**：`note_dir/note.md` + `note_dir/Assets/*.jpg`，markdown 里用**相对引用** `![...](Assets/xxx.jpg)`；
+- 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
+- **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
+- 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
+
 ## 工具参考
 
 | 工具 | 说明 |
 |------|------|
-| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持 `video_understanding` 视频理解，见[使用说明](#进阶视频理解画面切片)） |
+| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记，见[使用说明](#进阶视频理解画面切片)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
 | `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |

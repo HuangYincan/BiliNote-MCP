@@ -23,13 +23,20 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 
 1. **`health_check`** —— 确认 ffmpeg/db 就绪；若 `ffmpeg: missing` 先让用户装 FFmpeg。
 2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。
-3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 用 `update_provider(provider_id, api_key)` 填；自建用 `add_provider(name, api_key, base_url, type)`。再 `list_models(provider_id)`（实时拉取）或 `add_model(provider_id, model_name)`（手动添加）确认模型可用。
-4. **`generate_note(video_url=url, provider_id=..., model_name=..., quality="medium")`** —— 提交任务，拿到 `task_id`。
-   - 可加 `style`（如 `tutorial` / `academic` / `xiaohongshu`）、`format=["toc","link"]` 等。
-   - 用户想看**画面内容**（不只是听讲）：加 `video_understanding=True, video_interval=6, grid_size=[3,3]`，并必须选**多模态模型**（如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持，会退回纯文本）。
-5. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
-6. **拿到结果后**：`result.markdown` 就是笔记本体。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索，你读到的就是全部内容；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
-7. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接）。
+3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
+4. **确认参数（用户没指定时逐项询问，给出默认值）**：
+   - **LLM 模型**：用上面确认的供应商/模型，问一句「用哪个模型」即可；
+   - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq）；
+   - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…）；
+   - **是否视频理解**（看画面）：默认否；要则配多模态模型 + `video_understanding=True, video_interval=6, grid_size=[3,3]`；
+   - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
+   - 用户说「你定」就跳过追问，用默认值。
+5. **`generate_note(video_url=url, provider_id=..., model_name=..., style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
+   - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
+   - 视频理解：加 `video_understanding=True, video_interval=6, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
+6. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
+7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（图片模式）：笔记文件在 `{note_dir}/note.md`，图片在 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
+8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
 
 ## 配置要点
 

@@ -10,6 +10,13 @@
 - **视频理解（画面切片）**：
   - 修复 `video_understanding=True` 时 `grid_size` 缺省为空 tuple 导致「视频处理失败」——改为自动默认 `[3,3]`（`screenshot` 模式 `[2,2]`）。
   - README / docs/04 新增「视频理解」章节（`video_understanding` / `video_interval` / `grid_size` 用法、需多模态模型）；docs/04 工具参考补全这些参数；SKILL.md 工作流加「用户想看画面」时的 agent 指引。
+- **用户可配置笔记参数 + 图片插入便携笔记（Assets）**：
+  - `generate_note` 新增 `notes_dir` 参数（便携笔记位置）；解析优先级：`notes_dir` → `BILINOTE_NOTES_DIR` env → `note_results/{task_id}/`。
+  - `note.py`：`_insert_screenshots` 支持 `assets_dir`（截图写进 `Assets/`、markdown 用相对引用 `![...](Assets/xxx.jpg)`）；`generate()` 截图模式下写 `note.md` 与 `Assets/` 同层。
+  - `server.py`：任务结果返回 `note_dir`。
+  - SKILL.md：工作流新增「确认参数」步骤 —— 用户没指定时询问 LLM 模型/转写/风格/是否视频理解/是否插图片+保存位置。
+  - README / docs/04：新增「图片插入（便携笔记）」章节。
+  - 已单测 `_insert_screenshots` Assets 布局（相对引用 + 图片落盘）。
 
 ## 发布后维护（2026-07-31）
 
