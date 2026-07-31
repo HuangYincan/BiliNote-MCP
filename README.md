@@ -1,14 +1,24 @@
 # BiliNote-MCP
 
-把 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的核心能力 —— **视频链接 → AI Markdown 笔记** —— 封装成 MCP 工具与 Claude Code Skill，供 agent 直接调用。
+> 视频链接 → AI Markdown 笔记。基于 [BiliNote](https://github.com/JefferyHcool/BiliNote) 核心能力封装成的 **MCP 工具 + Claude Code Skill**：给 agent 一个链接，它下载、转写、总结，交回一份结构化笔记 —— 全程无需启动后端。
+
+<div align="center">
+
+[![GitHub stars](https://img.shields.io/github/stars/HuangYincan/BiliNote-MCP?logo=github)](https://github.com/HuangYincan/BiliNote-MCP)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)]()
+[![MCP](https://img.shields.io/badge/MCP-Server-6C5CE7)]()
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-D97757)]()
+
+</div>
 
 📦 仓库：[HuangYincan/BiliNote-MCP](https://github.com/HuangYincan/BiliNote-MCP)
 
-## 特性
+## ✨ 特性
 
-- **内嵌流水线**：下载（yt-dlp）→ 字幕/转写（faster-whisper 本地 或 groq/bcut 云端）→ LLM 总结 → Markdown 笔记，全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
-- **无 RAG**：agent 拿到 Markdown 后自己阅读、自己回答，不需要 ChromaDB/embedding。
-- **自包含**：`app/` 目录复制自上游（见 [VENDOR.md](VENDOR.md)），pip/uv 一键安装。
+- **🗜️ 内嵌流水线** —— 下载（yt-dlp）→ 字幕/转写（本地 faster-whisper 或云端 groq/bcut）→ LLM 总结 → Markdown 笔记。全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
+- **🧠 无 RAG** —— agent 拿到 Markdown 后自己阅读、自己回答，不需要 ChromaDB / embedding，轻量即用。
+- **📦 自包含** —— `app/` 目录复制自上游（见 [VENDOR.md](VENDOR.md)），pip / uv 一键安装。
 
 ## 快速开始（TL;DR）
 
