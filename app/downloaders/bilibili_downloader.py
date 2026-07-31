@@ -162,6 +162,13 @@ class BilibiliDownloader(Downloader, ABC):
         :param langs: 优先语言列表
         :return: TranscriptResult 或 None
         """
+        # B 站 AI 字幕需要登录态（SESSDATA cookie）：没配 cookie 时 API 返回空列表，
+        # 只能走语音识别。提示用户配置后可跳过转写。
+        if not CookieConfigManager().get("bilibili"):
+            logger.info(
+                "未配置 B 站 SESSDATA cookie：AI 字幕拿不到，将走语音识别。"
+                "配置 `set_downloader_cookie(bilibili, SESSDATA=...)` 后可直接用 B 站 AI 字幕、跳过语音识别"
+            )
         # 1) 优先走 B 站官方 player API（直拉，无需下视频；AI 字幕需 SESSDATA cookie）
         try:
             result = BilibiliSubtitleFetcher().fetch_subtitles(video_url)

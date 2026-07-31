@@ -35,6 +35,7 @@
 - **修向导选 mlx 后卡死**：mlx 路径会 `import mlx_whisper_transcriber` → `import mlx_whisper`（加载 MLX 框架很重、可能卡顿）。改为轻量：`check_mlx_whisper_model_exists` 用内联 repo 映射（不 import mlx_whisper，实测 0ms），mlx 可用性用 `find_spec` 判断；加「检查模型状态…」提示。
 - **修 mlx 下载失败（numba 循环导入）**：`_download_mlx_model` 之前 import `mlx_whisper_transcriber`（其依赖链 numba 等有循环导入风险）。下载其实只需 `huggingface_hub.snapshot_download` —— 改为用内联 `MLX_REPO_MAP`，纯 HF 下载，不碰 mlx_whisper。
 - **`notes_dir` 现在总是写 note.md**：之前只有截图模式才写便携笔记，用户指定 `notes_dir` 却不插图片时笔记不会写入该目录（agent 只能手动提取）。现在指定 `notes_dir`（或截图模式）都会把 `note.md` 写到目标目录，且 `result.note_dir` 总会返回（`_run_note_task` 按 notes_dir → 截图 顺序判断）。SKILL/README 同步。
+- **B 站 AI 字幕说明 + 提示**：功能已实现（API 直拉支持 `ai_type`、yt-dlp 兜底 `writeautomaticsub`），但 B 站 AI 字幕需 **SESSDATA cookie**；无 cookie 时 API 返回空列表 → 只能走语音识别。`raw_info.subtitles={}` 只反映手动 CC（AI 字幕在 automatic_captions）。给 `download_subtitles`/`fetch_subtitles` 加了「配置 SESSDATA 即可用 AI 字幕跳过转写」的日志提示；SKILL 故障排查补对应项。
 
 ## 发布后维护（2026-07-31）
 

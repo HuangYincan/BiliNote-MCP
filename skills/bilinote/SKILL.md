@@ -62,5 +62,6 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | 转写一直失败、提示模型未下载 | 问用户：`bilinote-mcp transcriber download <size>` 下载，或切云端（`set_transcriber("bcut"/"groq")`）—— 不要静默切换 |
 | 任务卡在 `INITIALIZING` | 首次使用 fast-whisper 正在下载模型，耐心等；模型很大时可改用云端转写 |
 | B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 配置 Cookie 后重试 |
+| 想用 B 站 **AI 字幕**跳过语音识别 | 必须先配 cookie：`set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`（AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions，关键是 cookie） |
 | 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
