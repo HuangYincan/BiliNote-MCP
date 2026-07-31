@@ -107,10 +107,16 @@ bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https
 
 # 语音转写引擎
 bilinote-mcp transcriber list                                  # 查看当前引擎与就绪状态
-bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whisper（tiny/base/small/medium/large-v3）
+bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whisper
 bilinote-mcp transcriber set groq                               # 切云端
 bilinote-mcp transcriber download small                         # 下载本地 whisper 模型
 ```
+
+**转写引擎**：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（**仅 macOS Apple Silicon**，GPU 加速）。
+
+**本地 whisper 尺寸**：`tiny` / `base` / `small` / `medium` / `large-v3` / **`large-v3-turbo`**（turbo 更快、精度略低于 large-v3）。
+
+**设备**：whisper 会自动检测 CUDA（装了 torch+CUDA 就用 GPU，否则回退 CPU）；macOS 的 GPU 用 `mlx-whisper`。CLI `transcriber download` 用 CPU 只是因为它**只下载权重、不推理**（device 参数不影响下载结果）。
 
 ### 没有 LLM API key？
 

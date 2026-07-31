@@ -43,7 +43,7 @@ _BUILTIN_PROVIDERS = {
     "4": ("groq", "Groq", "https://api.groq.com/openai/v1"),
     "5": ("ollama", "Ollama（本地免费，无需 key）", "http://127.0.0.1:11434/v1"),
 }
-_WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3")
+_WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
 
 
 def _ask(prompt: str, default: str = "") -> str:
