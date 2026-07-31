@@ -32,7 +32,7 @@
 - SKILL.md：前提补充「用户没有 key 优先用 Ollama」的 agent 处理路径。
 - **API key 安全通道（对话外）**：新增 `bilinote-mcp providers` CLI 子命令（`list` / `set` / `add`），用户在终端直接写 key，**key 不经过 agent 对话**（对话会发送到 agent 的 LLM 上游）。README 安全说明改为「别在对话里发 key」指引；SKILL.md 加安全红线（让用户用终端 CLI 填 key）。
 - 修复：`builtins.print` 重定向挪到 `import app.*` 之前（douyin_downloader 等模块导入时打印会污染 CLI stdout / MCP stdio）。
-- README 新增「更新」章节：确认 MCP（uvx）与 Skill（插件）均为**自动更新**；附手动强制刷新命令 `claude plugin marketplace update bilinote` + `claude plugin install bilinote@bilinote`。
+- README「更新」章节**修正**：MCP（uvx）确认为自动更新；Skill/插件**不会自动升级**，实测需 `claude plugin disable bilinote@bilinote` + `claude plugin install bilinote@bilinote`（`install` 单独执行会因「已安装」被跳过）。
 - 前提补充：**uv 为必需**（一行安装命令）；无 uv 走方式四（install.sh 内置 pip 兜底）。
 - CLI 命令补充 PATH 无关写法：有 uv 用 `uvx --from ... bilinote-mcp providers ...`；无 uv 用 `<仓库>/.venv/bin/bilinote-mcp providers ...`。
 - install.sh：skill 安装仅在**有 uv** 时走 marketplace（插件内 MCP 走 uvx），无 uv 自动回退本地链接，避免注册出起不来的 MCP。

@@ -62,17 +62,15 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 
 ## 更新
 
-MCP server 和 Skill 都**自动更新**（无需手动操作）：
-
-- **MCP server**：走 uvx，每次会话启动时自动检查仓库，有新 commit 即用新版。
-- **Skill / 插件**：Claude Code 会自动刷新 marketplace 并升级插件到最新 commit。
-
-若想手动强制刷新（或自动更新偶发滞后时）：
+- **MCP server**：✅ **自动更新** —— 走 uvx，每次会话启动时自动检查仓库，有新 commit 即用新版（新 commit 后首次连接会重建、稍慢；之后走缓存）。
+- **Skill / 插件**：❌ **手动更新** —— 插件不会自动升级到新 commit。更新命令：
 
 ```bash
-claude plugin marketplace update bilinote     # 拉最新 marketplace
-claude plugin install bilinote@bilinote       # 幂等，重装/升级插件到最新
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
 ```
+
+（注意 `install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才会重装到最新。）
 
 源码 / `install.sh` 方式：`git pull && ./install.sh`。
 
