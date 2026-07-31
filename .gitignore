@@ -31,3 +31,5 @@ dist/
 # Claude Code 机器本地配置（插件/marketplace 安装状态，不入库）
 .claude/settings.json
 .claude/settings.local.json
+# 项目 CLAUDE.md（本机开发上下文，不提交）
+/CLAUDE.md
