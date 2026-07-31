@@ -203,6 +203,18 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `validate_url` | 判断视频链接属于哪个平台 |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
 
+## 环境变量（可选）
+
+| 变量 | 作用 | 默认 |
+|------|------|------|
+| `BILINOTE_DATA_DIR` | 数据根目录（SQLite / 笔记 / 截图 / 配置） | 安装模式 `~/.local/share/bilinote-mcp`，源码 `仓库/data` |
+| `BILINOTE_NOTES_DIR` | 默认笔记输出目录（指定 `notes_dir` 时的兜底） | `note_results/{task_id}/` |
+| `BILINOTE_CONFIG_DIR` | 配置文件目录（转写/cookie/app 配置） | `<数据目录>/config` |
+| `BILINOTE_MODEL_DIR` | whisper / mlx 模型目录 | `<数据目录>/models`（源码 `仓库/models`） |
+| `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
+
+**多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务）。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
+
 ## 更新
 
 各安装方式的更新命令：

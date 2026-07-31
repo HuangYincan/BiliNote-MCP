@@ -41,6 +41,7 @@
 - **修 SESSDATA 多条 cookie 冲突**：跟随 crossDomain URL 时 B 站会给不同 domain/path 设多条同名 SESSDATA，`requests.cookies.get()` 抛 `CookieConflictError` —— 改为手动遍历取第一条（mock 验证多 cookie 场景）。
 - **扫码登录成功/过期后暂留**：成功保存或二维码过期后显示结果并「（按回车返回）」，不再立刻跳回上级菜单（与下载流程一致）。
 - **模型管理 UX**：本地模型「已下载」和「下载完成」两种情况都**暂留**，显示模型位置 + 询问是否卸载（新增 `_show_uninstall_option` 助手、`_model_dir` 定位目录），不再一闪而过。
+- **并发/多会话说明**：README 新增「环境变量（可选）」表（含 `BILINOTE_MAX_WORKERS`）与「多会话并行」说明；SKILL 新增「并发与多会话」章节（任务按 task_id 隔离、每会话默认 3 并发、资源注意）。
 
 ## 发布后维护（2026-07-31）
 

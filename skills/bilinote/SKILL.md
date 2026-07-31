@@ -52,6 +52,13 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | B站等需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
 | 本地文件 | `generate_note(video_url="/绝对/路径/xxx.mp4", platform="local", ...)` |
 
+## 并发与多会话
+
+- 每个会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离，**多个会话可并行生成不同视频的笔记**，互不干扰。
+- 本会话内最多 `BILINOTE_MAX_WORKERS`（默认 3）个并发笔记任务。
+- 若用户想同时生成多个视频：可逐个 `generate_note` 提交（各自 task_id）后并行轮询；也可提示用户开多个会话。
+- 注意资源：whisper / MLX 转写吃 CPU/内存，太多会话并行会卡顿；所有会话共用同一个数据库，极端并发偶发写冲突。
+
 ## 故障排查
 
 | 现象 | 处理 |
