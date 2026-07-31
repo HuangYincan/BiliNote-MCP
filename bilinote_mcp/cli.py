@@ -68,23 +68,40 @@ def _ask_secret(prompt: str) -> str:
         return ""
 
 
-def _download_whisper(size: str) -> None:
-    """在终端下载 fast-whisper 模型（阻塞）。"""
-    from app.transcriber.whisper_models import resolve_whisper_model
-    from faster_whisper import WhisperModel
-    from app.utils.path_helper import get_model_dir
+def _tqdm_bar():
+    """构造带统一格式的 tqdm 类（snapshot_download 的 tqdm_class 用）。"""
+    from tqdm import tqdm
 
-    print(f"正在下载 whisper-{size}（首次约几十MB~数GB，请稍候）…", file=sys.stdout)
-    WhisperModel(
-        model_size_or_path=resolve_whisper_model(size),
-        device="cpu", compute_type="int8",
-        download_root=get_model_dir("whisper"),
-    )
+    class _Bar(tqdm):
+        def __init__(self, *a, **k):
+            k.setdefault("bar_format", "{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
+            super().__init__(*a, **k)
+
+    return _Bar
+
+
+def _download_whisper(size: str) -> None:
+    """在终端下载 fast-whisper 模型（阻塞，带进度条）。"""
+    from app.transcriber.whisper_models import is_local_target, resolve_whisper_model
+    from app.utils.path_helper import get_model_dir
+    from huggingface_hub import snapshot_download
+
+    target = resolve_whisper_model(size)
+    model_dir = get_model_dir("whisper")
+    if is_local_target(target):
+        print(f"（{target} 为本地路径，无需下载）", file=sys.stdout)
+        return
+    print(f"正在下载 whisper-{size}（{target}）…", file=sys.stdout)
+    snapshot_download(repo_id=target, cache_dir=model_dir, tqdm_class=_tqdm_bar())
+    # 让 faster-whisper 真正加载（确认模型可用）
+    from faster_whisper import WhisperModel
+
+    WhisperModel(model_size_or_path=target, device="cpu", compute_type="int8", download_root=model_dir)
     print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
 
 
 def _download_mlx_model(size: str) -> None:
-    """在终端下载 mlx-whisper 模型（仅 macOS，阻塞）。"""
+    """在终端下载 mlx-whisper 模型（仅 macOS，阻塞，带进度条）。"""
     from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
     from app.utils.path_helper import get_model_dir
     from huggingface_hub import snapshot_download
@@ -92,8 +109,12 @@ def _download_mlx_model(size: str) -> None:
     repo_id = MLX_MODEL_MAP.get(size)
     if not repo_id:
         raise ValueError(f"未找到 mlx 模型映射: {size}（可选: {', '.join(MLX_MODEL_MAP.keys())}）")
-    print(f"正在下载 mlx-whisper-{size}（{repo_id}，请稍候）…", file=sys.stdout)
-    snapshot_download(repo_id=repo_id, local_dir=os.path.join(get_model_dir("mlx-whisper"), repo_id))
+    print(f"正在下载 mlx-whisper-{size}（{repo_id}）…", file=sys.stdout)
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=os.path.join(get_model_dir("mlx-whisper"), repo_id),
+        tqdm_class=_tqdm_bar(),
+    )
     print(f"✓ mlx-whisper-{size} 下载完成", file=sys.stdout)
 
 
@@ -207,17 +228,27 @@ def _wizard_transcriber(inq) -> None:
             cfg = TranscriberConfigManager().get_config()
             cur = f"{cfg['transcriber_type']} / {cfg['whisper_model_size']}"
             _show_header("② 语音转写引擎")
+            cur_engine = cfg["transcriber_type"]
+            choices = []
+            for val, base in (
+                ("fast-whisper", "fast-whisper（本地）"),
+                ("groq", "groq（云端，需 key）"),
+                ("bcut", "bcut（云端）"),
+                ("kuaishou", "kuaishou（云端）"),
+                ("mlx-whisper", "mlx-whisper（仅 macOS，GPU）"),
+            ):
+                if val == cur_engine:
+                    mark = f"  {_GREEN}✓ 当前{_RESET}"
+                    if val in ("fast-whisper", "mlx-whisper"):
+                        mark += f"  {_DIM}尺寸 {cfg['whisper_model_size']}{_RESET}"
+                else:
+                    mark = ""
+                choices.append({"name": base + mark, "value": val})
+            choices.append({"name": "← 返回主菜单", "value": "back"})
             pick = inq.select(
-                message=f"当前：{cur}",
-                choices=[
-                    {"name": f"fast-whisper（本地）   当前尺寸 {cfg['whisper_model_size']}", "value": "fast-whisper"},
-                    {"name": "groq（云端，需 key）", "value": "groq"},
-                    {"name": "bcut（云端）", "value": "bcut"},
-                    {"name": "kuaishou（云端）", "value": "kuaishou"},
-                    {"name": "mlx-whisper（仅 macOS，GPU）", "value": "mlx-whisper"},
-                    {"name": "← 返回主菜单", "value": "back"},
-                ],
-                default=cfg["transcriber_type"] if cfg["transcriber_type"] in ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper") else "fast-whisper",
+                message=f"当前引擎：{cur}",
+                choices=choices,
+                default=cur_engine if cur_engine in ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper") else "fast-whisper",
                 keybindings=_KB,
             ).execute()
             if pick == "back":
@@ -245,10 +276,18 @@ def _wizard_transcriber(inq) -> None:
                 if downloaded:
                     print(f"{_DIM}（{label} 已下载，无需再下）{_RESET}", file=sys.stdout)
                 elif inq.confirm(message=f"本地模型 {label} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
+                    # 专门的下载界面：进度条 + 完成后停留，避免立刻跳回
+                    _show_header(f"下载 {label}")
+                    print("", file=sys.stdout)
                     try:
                         dl_fn()
+                        print(f"{_GREEN}✓ {label} 下载完成{_RESET}", file=sys.stdout)
                     except Exception as e:
                         print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
+                    try:
+                        input("（按回车返回）", )
+                    except (EOFError, KeyboardInterrupt):
+                        pass
             else:
                 TranscriberConfigManager().update_config(pick)
                 print(f"{_GREEN}✓ 已切换 {pick}{_RESET}", file=sys.stdout)
