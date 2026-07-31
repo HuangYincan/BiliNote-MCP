@@ -29,6 +29,7 @@
 - **SKILL 确认参数强化**：① LLM 模型 `list_models` 后**列出让用户选**（不悄悄自定）；② 本地转写模型未就绪时**必须问用户**下载或切云端（不静默切换）；③ 故障排查补 B 站 `fatal`/playurl 412 处理。
 - **setup 补 mlx-whisper 下载入口**：之前 `_wizard_transcriber` 只在 fast-whisper 分支问下载，mlx 漏了；现本地引擎（fast-whisper/mlx）都检查已下载并询问。`bilinote-mcp transcriber download` 新增 `--engine mlx-whisper`（macOS）。
 - **setup 下载 UX**：① 确认下载后进入**专门「下载 X」界面**（进度条 + 完成停留，按回车返回，不再立刻跳回）；② 下载改用 `snapshot_download` + 自定义 tqdm 进度条（已验证 faster-whisper 能从同一缓存加载）；③ 修「当前尺寸」显示位置（只在当前引擎上显示，不再误标到其它引擎）。
+- **修两处向导问题**：① InquirerPy 选择项 `name` 里嵌 ANSI 转义码会原样显示（`^[[1;32m...`）—— 改为纯文本标记；② mlx-whisper 未安装时给出明确指引（`--with mlx-whisper` 装法）而非 `No module named 'mlx_whisper'`（向导检测 mlx 可用性 + `_download_mlx_model` 抛清晰错误）。
 
 ## 发布后维护（2026-07-31）
 

@@ -102,7 +102,13 @@ def _download_whisper(size: str) -> None:
 
 def _download_mlx_model(size: str) -> None:
     """在终端下载 mlx-whisper 模型（仅 macOS，阻塞，带进度条）。"""
-    from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
+    try:
+        from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
+    except ImportError:
+        raise RuntimeError(
+            "mlx-whisper 未安装：请用 `uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
+            "（或 `uvx --from ... --with mlx-whisper`）安装后重试"
+        )
     from app.utils.path_helper import get_model_dir
     from huggingface_hub import snapshot_download
 
@@ -237,10 +243,11 @@ def _wizard_transcriber(inq) -> None:
                 ("kuaishou", "kuaishou（云端）"),
                 ("mlx-whisper", "mlx-whisper（仅 macOS，GPU）"),
             ):
+                # 注意：InquirerPy 选择项 name 里不能嵌 ANSI 转义码（会原样显示），用纯文本
                 if val == cur_engine:
-                    mark = f"  {_GREEN}✓ 当前{_RESET}"
+                    mark = "  ✓ 当前"
                     if val in ("fast-whisper", "mlx-whisper"):
-                        mark += f"  {_DIM}尺寸 {cfg['whisper_model_size']}{_RESET}"
+                        mark += f"  尺寸 {cfg['whisper_model_size']}"
                 else:
                     mark = ""
                 choices.append({"name": base + mark, "value": val})
@@ -269,12 +276,26 @@ def _wizard_transcriber(inq) -> None:
                     downloaded = check_whisper_model_exists(size, "whisper")
                     dl_fn = lambda: _download_whisper(size)
                     label = f"whisper-{size}"
+                    mlx_missing = False
                 else:  # mlx-whisper
-                    downloaded = check_mlx_whisper_model_exists(size)
+                    # mlx-whisper 是可选依赖；未安装时给出明确指引而不是「No module named」
+                    try:
+                        from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP  # noqa: F401
+                        mlx_missing = False
+                    except ImportError:
+                        mlx_missing = True
+                    downloaded = not mlx_missing and check_mlx_whisper_model_exists(size)
                     dl_fn = lambda: _download_mlx_model(size)
                     label = f"mlx-whisper-{size}"
                 if downloaded:
                     print(f"{_DIM}（{label} 已下载，无需再下）{_RESET}", file=sys.stdout)
+                elif mlx_missing:
+                    print(
+                        f"{_YELLOW}⚠ mlx-whisper 未安装。请用 "
+                        f"`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
+                        f"（或 `uvx --from ... --with mlx-whisper`）安装后重试；或改用 fast-whisper{_RESET}",
+                        file=sys.stdout,
+                    )
                 elif inq.confirm(message=f"本地模型 {label} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
                     # 专门的下载界面：进度条 + 完成后停留，避免立刻跳回
                     _show_header(f"下载 {label}")
