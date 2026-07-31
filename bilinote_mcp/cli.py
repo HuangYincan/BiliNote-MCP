@@ -83,6 +83,20 @@ def _download_whisper(size: str) -> None:
     print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
 
 
+def _download_mlx_model(size: str) -> None:
+    """在终端下载 mlx-whisper 模型（仅 macOS，阻塞）。"""
+    from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
+    from app.utils.path_helper import get_model_dir
+    from huggingface_hub import snapshot_download
+
+    repo_id = MLX_MODEL_MAP.get(size)
+    if not repo_id:
+        raise ValueError(f"未找到 mlx 模型映射: {size}（可选: {', '.join(MLX_MODEL_MAP.keys())}）")
+    print(f"正在下载 mlx-whisper-{size}（{repo_id}，请稍候）…", file=sys.stdout)
+    snapshot_download(repo_id=repo_id, local_dir=os.path.join(get_model_dir("mlx-whisper"), repo_id))
+    print(f"✓ mlx-whisper-{size} 下载完成", file=sys.stdout)
+
+
 # 交互配色（ANSI）
 _CYAN = "\033[1;36m"
 _YELLOW = "\033[1;33m"
@@ -217,16 +231,24 @@ def _wizard_transcriber(inq) -> None:
                     continue
                 TranscriberConfigManager().update_config(pick, size)
                 print(f"{_GREEN}✓ 已切换 {pick} / {size}{_RESET}", file=sys.stdout)
-                if pick == "fast-whisper":
-                    from app.utils.model_status import check_whisper_model_exists
+                # 本地引擎：检查模型是否已下载，未下载则询问是否现在下载
+                from app.utils.model_status import check_mlx_whisper_model_exists, check_whisper_model_exists
 
-                    if check_whisper_model_exists(size, "whisper"):
-                        print(f"{_DIM}（whisper-{size} 已下载，无需再下）{_RESET}", file=sys.stdout)
-                    elif inq.confirm(message=f"本地模型 whisper-{size} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
-                        try:
-                            _download_whisper(size)
-                        except Exception as e:
-                            print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
+                if pick == "fast-whisper":
+                    downloaded = check_whisper_model_exists(size, "whisper")
+                    dl_fn = lambda: _download_whisper(size)
+                    label = f"whisper-{size}"
+                else:  # mlx-whisper
+                    downloaded = check_mlx_whisper_model_exists(size)
+                    dl_fn = lambda: _download_mlx_model(size)
+                    label = f"mlx-whisper-{size}"
+                if downloaded:
+                    print(f"{_DIM}（{label} 已下载，无需再下）{_RESET}", file=sys.stdout)
+                elif inq.confirm(message=f"本地模型 {label} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
+                    try:
+                        dl_fn()
+                    except Exception as e:
+                        print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
             else:
                 TranscriberConfigManager().update_config(pick)
                 print(f"{_GREEN}✓ 已切换 {pick}{_RESET}", file=sys.stdout)
@@ -397,8 +419,9 @@ def _transcriber_cli(argv) -> None:
     p_set = sub.add_parser("set", help="切换转写引擎")
     p_set.add_argument("engine", choices=_TRANSCRIBER_ENGINES)
     p_set.add_argument("--size", help="whisper 模型尺寸（tiny/base/small/medium/large-v3）")
-    p_dl = sub.add_parser("download", help="下载本地 whisper 模型（fast-whisper）")
+    p_dl = sub.add_parser("download", help="下载本地 whisper 模型")
     p_dl.add_argument("size", choices=_WHISPER_SIZES)
+    p_dl.add_argument("--engine", default="fast-whisper", choices=("fast-whisper", "mlx-whisper"), help="fast-whisper（默认）或 mlx-whisper（macOS）")
 
     opts = parser.parse_args(argv)
     mgr = TranscriberConfigManager()
@@ -418,7 +441,10 @@ def _transcriber_cli(argv) -> None:
             print(f"（本地模型还需下载：bilinote-mcp transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
     elif opts.cmd == "download":
         try:
-            _download_whisper(opts.size)
+            if opts.engine == "mlx-whisper":
+                _download_mlx_model(opts.size)
+            else:
+                _download_whisper(opts.size)
         except Exception as e:
             print(f"✗ 下载失败: {e}（可稍后重试或换小尺寸）", file=sys.stderr)
             sys.exit(1)

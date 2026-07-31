@@ -27,6 +27,7 @@
 - **修复向导崩溃**：InquirerPy 左键绑定写错（缺 `key` 字段 + 用了不存在的 `cancel` action）导致 `KeyError: 'key'` —— 改为 `{"interrupt": [{"key": "left"}]}`（interrupt 是已注册 action，与 Ctrl-C 同效），select/text/secret/confirm 构造验证通过。
 - **修复 B 站下载失败**：`bilibili_dm_patch` 未透传 yt-dlp 2026.07.04 新增的 `fatal` 参数导致 `TypeError` —— 已透传，实测用户视频 playinfo 正常。
 - **SKILL 确认参数强化**：① LLM 模型 `list_models` 后**列出让用户选**（不悄悄自定）；② 本地转写模型未就绪时**必须问用户**下载或切云端（不静默切换）；③ 故障排查补 B 站 `fatal`/playurl 412 处理。
+- **setup 补 mlx-whisper 下载入口**：之前 `_wizard_transcriber` 只在 fast-whisper 分支问下载，mlx 漏了；现本地引擎（fast-whisper/mlx）都检查已下载并询问。`bilinote-mcp transcriber download` 新增 `--engine mlx-whisper`（macOS）。
 
 ## 发布后维护（2026-07-31）
 
