@@ -49,7 +49,7 @@ bilinote-mcp setup
 - **CLI 命令可用形式**：正文里的 `bilinote-mcp ...` 是简写，等价于：
   - 有 uv：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（`--from` 必须带 `git+` 前缀）
   - 方式四（pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp ...`
-  - 想让 `bilinote-mcp` 直接可用：`uv tool install --from git+... bilinote-mcp` + `uv tool update-shell` 加入 PATH
+  - 想让 `bilinote-mcp` 直接可用：`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp` + `uv tool update-shell` 加入 PATH
 
 ### 方式一：插件 marketplace —— Skill + MCP（推荐）
 
@@ -96,7 +96,7 @@ cd BiliNote-MCP && ./install.sh
 ### 交互向导 `setup`（推荐）
 
 ```bash
-bilinote-mcp setup        # 未在 PATH 时：uvx --from git+... bilinote-mcp setup
+bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup
 ```
 
 一次完成：选 LLM 供应商（隐藏输入 key）→ 选转写引擎 + 模型尺寸 →（可选）立即下载 whisper 模型。
