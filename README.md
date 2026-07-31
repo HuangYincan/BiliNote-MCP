@@ -2,7 +2,7 @@
 
 把 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的核心能力 —— **视频链接 → AI Markdown 笔记** —— 封装成 MCP 工具与 Claude Code Skill，供 agent 直接调用。
 
-📦 仓库：<https://github.com/HuangYincan/BiliNote-MCP>
+📦 仓库：[HuangYincan/BiliNote-MCP](https://github.com/HuangYincan/BiliNote-MCP)
 
 核心特点：
 
@@ -17,10 +17,11 @@ MCP server 是**会话级常驻进程**（会话开始时启动一次，工具�
 ### 方式一：uvx —— 自动更新（推荐）
 
 ```bash
-claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
+# 用户级注册（默认是项目级 local，去掉 --scope user 即项目级）
+claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
 ```
 
-每次会话启动时 uvx 检查一次本仓库：**有新 commit 就自动用最新版**（重建一次，约 20s；之后缓存命中约 8s）。适合在持续迭代、想随时拿到最新能力的场景。
+每次会话启动时 uvx 检查一次本仓库：**有新 commit 就自动用最新版**。
 
 ### 方式二：`uv tool install` —— 固定版本、启动最快
 
@@ -62,7 +63,7 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 
 ## 前提
 
-- Python ≥ 3.11（推荐 3.12）
+- Python ≥ 3.11，<3.14（推荐 3.12）
 - **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`
 - LLM 供应商 API Key（通过 `add_provider` 工具或复用已有 BiliNote 数据库配置）
 - 本地转写需下载 whisper 模型（`download_transcriber_model`），或改用云端 groq
