@@ -2,13 +2,14 @@ import base64
 import hashlib
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import ffmpeg
 from PIL import Image, ImageDraw, ImageFont
 
 from app.utils.logger import get_logger
-from app.utils.path_helper import get_app_dir
 
 logger = get_logger(__name__)
 class VideoReader:
@@ -30,9 +31,10 @@ class VideoReader:
         self.unit_width = unit_width
         self.unit_height = unit_height
         self.save_quality = save_quality
-        self.frame_dir = frame_dir or get_app_dir("output_frames")
-        self.grid_dir = grid_dir or get_app_dir("grid_output")
-        print(f"视频路径：{video_path}",self.frame_dir,self.grid_dir)
+        # 默认 None → run() 内为本次任务创建独立临时目录，
+        # 并发任务不再互相清空对方已提取的帧/网格图（旧的共享 output_frames/ 是竞态根因）
+        self.frame_dir = frame_dir
+        self.grid_dir = grid_dir
         self.font_path = font_path
 
     @staticmethod
@@ -102,7 +104,7 @@ class VideoReader:
             return image_paths
         except Exception as e:
             logger.error(f"分割帧发生错误：{str(e)}")
-            raise ValueError("视频处理失败")
+            raise ValueError(f"视频处理失败：{e}") from e
 
     def group_images(self) -> list[list[str]]:
         image_files = [os.path.join(self.frame_dir, f) for f in os.listdir(self.frame_dir) if
@@ -146,23 +148,20 @@ class VideoReader:
 
     def run(self)->list[str]:
         logger.info("开始提取视频帧...")
+        # 每个任务独立临时目录：并发任务不再互相清空对方已提取的帧/网格图
+        temp_frame_dir = None
+        temp_grid_dir = None
+        if self.frame_dir is None:
+            self.frame_dir = tempfile.mkdtemp(prefix="bilinote_frames_")
+            temp_frame_dir = self.frame_dir
+        if self.grid_dir is None:
+            self.grid_dir = tempfile.mkdtemp(prefix="bilinote_grid_")
+            temp_grid_dir = self.grid_dir
         try:
-            # 确保目录存在
-            print(self.frame_dir,self.grid_dir)
+            # 确保目录存在（显式传入的目录同样保证可用）
             os.makedirs(self.frame_dir, exist_ok=True)
             os.makedirs(self.grid_dir, exist_ok=True)
-            #清空帧文件夹
-            for file in os.listdir(self.frame_dir):
-                if file.startswith("frame_"):
-                    os.remove(os.path.join(self.frame_dir, file))
-            print(self.frame_dir,self.grid_dir)
-            #清空网格文件夹
-            for file in os.listdir(self.grid_dir):
-                if file.startswith("grid_"):
-                    os.remove(os.path.join(self.grid_dir, file))
-            print(self.frame_dir,self.grid_dir)
             self.extract_frames()
-            print("2#3",self.frame_dir,self.grid_dir)
             logger.info("开始拼接网格图...")
             image_paths = []
             groups = self.group_images()
@@ -174,10 +173,15 @@ class VideoReader:
                 image_paths.append(out_path)
 
             logger.info("📤 开始编码图像...")
-            urls = self.encode_images_to_base64(image_paths)
-            return urls
+            return self.encode_images_to_base64(image_paths)
         except Exception as e:
             logger.error(f"发生错误：{str(e)}")
-            raise ValueError("视频处理失败")
+            raise ValueError(f"视频处理失败：{e}") from e
+        finally:
+            # 只清理本次任务创建的临时目录；调用方显式传入的目录不动
+            if temp_frame_dir:
+                shutil.rmtree(temp_frame_dir, ignore_errors=True)
+            if temp_grid_dir:
+                shutil.rmtree(temp_grid_dir, ignore_errors=True)
 
 
