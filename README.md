@@ -186,17 +186,16 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 
 ## 更新
 
-- **MCP server**：✅ **自动更新** —— 走 uvx，每次会话启动自动检查仓库，有新 commit 即用新版（新 commit 后首次连接会重建、稍慢；之后走缓存）。
-- **Skill / 插件**：❌ **手动更新** —— 插件不会自动升级：
+各安装方式的更新命令：
 
-```bash
-claude plugin disable bilinote@bilinote
-claude plugin install bilinote@bilinote
-```
+| 装的什么 | 更新命令 |
+|----------|----------|
+| **MCP server**（uvx / 插件） | ✅ 自动更新（每次会话查最新 commit），无需手动 |
+| **Skill / 插件** | `claude plugin disable bilinote@bilinote` + `claude plugin install bilinote@bilinote` |
+| **`uv tool install` 装的 CLI**（`bilinote-mcp`） | `uv tool upgrade bilinote-mcp`（保留 `--with mlx-whisper` 等附加依赖） |
+| **源码 / `install.sh`** | `git pull && ./install.sh` |
 
-（`install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才重装到最新。）
-
-- 源码 / `install.sh` 方式：`git pull && ./install.sh`。
+> 注意：插件 `install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才重装到最新。
 
 ## 安全（API Key）
 

@@ -112,6 +112,10 @@ class TranscriberConfigManager:
         result["ready"] = False
         result["reason"] = (
             f"转写模型 {ttype} / {size} 尚未下载就绪"
-            + ("，正在下载中，请稍候" if downloading else "，请先在「设置 → 音频转写配置」页下载")
+            + (
+                "，正在下载中，请稍候"
+                if downloading
+                else f"，请先执行 `bilinote-mcp transcriber download {size}` 下载"
+            )
         )
         return result
