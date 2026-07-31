@@ -183,6 +183,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - 产出**便携笔记**：`note_dir/note.md` + `note_dir/Assets/*.jpg`，markdown 里用**相对引用** `![...](Assets/xxx.jpg)`；
 - 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
 - **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
+- **指定了 `notes_dir` 时，即使不插图片也会把 `note.md` 写到该目录**（适合「生成笔记到某文件夹」）；
 - 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 
 ## 工具参考

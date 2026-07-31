@@ -123,9 +123,13 @@ def _run_note_task(task_id: str, **params) -> None:
             "transcript": asdict(result.transcript) if result.transcript else None,
             "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
         }
-        # 便携笔记（截图模式）：note.md + Assets/ 若写出，返回其所在目录
-        if "screenshot" in (params.get("_format") or []):
-            note_dir = Path(params["notes_dir"]) if params.get("notes_dir") else (NOTE_OUTPUT_DIR / task_id)
+        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录
+        if params.get("notes_dir"):
+            note_dir = Path(params["notes_dir"])
+            if (note_dir / "note.md").exists():
+                payload["note_dir"] = str(note_dir)
+        elif "screenshot" in (params.get("_format") or []):
+            note_dir = NOTE_OUTPUT_DIR / task_id
             if (note_dir / "note.md").exists():
                 payload["note_dir"] = str(note_dir)
         (NOTE_OUTPUT_DIR / f"{task_id}.json").write_text(

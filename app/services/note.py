@@ -216,9 +216,12 @@ class NoteGenerator:
             # 4. 截图 & 链接替换
             assets_dir = None
             if _format and "screenshot" in _format:
-                # 便携笔记：note.md 与 Assets/ 同层、相对引用；目录用户可指定
+                # 截图模式：note.md 与 Assets/ 同层、相对引用；目录用户可指定
                 _note_dir = Path(notes_dir or (NOTE_OUTPUT_DIR / task_id))
                 assets_dir = _note_dir / "Assets"
+            elif notes_dir:
+                # 用户指定了输出目录（即使不插图片），也把笔记写成文件
+                _note_dir = Path(notes_dir)
             if _format:
                 markdown = self._post_process_markdown(
                     markdown=markdown,
@@ -231,11 +234,11 @@ class NoteGenerator:
 
             markdown = prepend_source_link(markdown, str(video_url))
 
-            # 4.5 截图模式下，把最终笔记写成可整体搬迁的 note.md + Assets/
-            if assets_dir is not None:
+            # 4.5 写出 note.md（截图模式 或 用户指定了输出目录时）
+            if _note_dir is not None:
                 _note_dir.mkdir(parents=True, exist_ok=True)
                 (_note_dir / "note.md").write_text(markdown, encoding="utf-8")
-                logger.info(f"便携笔记已写出: {_note_dir / 'note.md'}")
+                logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
 
             # 5. 保存记录到数据库
             self._update_status(task_id, TaskStatus.SAVING)
