@@ -4,22 +4,57 @@
 
 📦 仓库：[HuangYincan/BiliNote-MCP](https://github.com/HuangYincan/BiliNote-MCP)
 
-核心特点：
+## 特性
 
 - **内嵌流水线**：下载（yt-dlp）→ 字幕/转写（faster-whisper 本地 或 groq/bcut 云端）→ LLM 总结 → Markdown 笔记，全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
 - **无 RAG**：agent 拿到 Markdown 后自己阅读、自己回答，不需要 ChromaDB/embedding。
 - **自包含**：`app/` 目录复制自上游（见 [VENDOR.md](VENDOR.md)），pip/uv 一键安装。
 
-## 快速开始
+## 快速开始（TL;DR）
 
-### 方式一：plugin marketplace —— 一键装 Skill + MCP（推荐）
+```bash
+# 装：一条命令装好 Skill + MCP
+claude plugin marketplace add HuangYincan/BiliNote-MCP
+claude plugin install bilinote@bilinote
+
+# 配：LLM key + 语音转写引擎（隐藏输入 key）
+bilinote-mcp setup
+
+# 用：重启会话，对 agent 说「帮我给这个视频做笔记」+ 链接
+```
+
+> `bilinote-mcp` 是 CLI 简写，未在 PATH 时用 `uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（见 [前提条件](#前提条件)）。
+
+| 安装方式 | 内容 | 适合 |
+|----------|------|------|
+| **一 · 插件 marketplace**（推荐） | Skill + MCP（uvx 自动更新） | 大多数用户 |
+| 二 · 只装 MCP（uvx） | 仅 MCP | 不想装 Skill |
+| 三 · uv tool install | 仅 MCP（固定版本，启动最快 ~1s） | 要稳定版本 |
+| 四 · 克隆 + install.sh | MCP + Skill + 自动 setup，无 uv 兜底 | 没装 uv / 想跑源码 |
+
+## 安装
+
+### 前提条件
+
+- **uv**（Python 包管理器，必需 —— uvx / uv tool 方式装 MCP 和 CLI 都靠它）：
+  `curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `brew install uv`
+  > 没有 uv？走「[方式四](#方式四克隆--installsh)」，脚本内置 pip 兜底。
+- **Python ≥ 3.11，<3.14**（推荐 3.12，`.python-version` 已锁定）
+- **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`（Linux：`apt install ffmpeg`）
+- **LLM 供应商 API Key**（见[配置](#配置装完必做)）
+- **CLI 命令可用形式**：正文里的 `bilinote-mcp ...` 是简写，等价于：
+  - 有 uv：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（`--from` 必须带 `git+` 前缀）
+  - 方式四（pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp ...`
+  - 想让 `bilinote-mcp` 直接可用：`uv tool install --from git+... bilinote-mcp` + `uv tool update-shell` 加入 PATH
+
+### 方式一：插件 marketplace —— Skill + MCP（推荐）
 
 ```bash
 claude plugin marketplace add HuangYincan/BiliNote-MCP
 claude plugin install bilinote@bilinote
 ```
 
-两条命令同时装好 **Skill + MCP server**（MCP 走 `uvx`，每次会话自动拉最新 commit）。装完重启会话（或 `/reload-plugins`）即可用。
+两条命令同时装好 **Skill + MCP server**（MCP 走 `uvx`，每次会话自动拉最新 commit）。装完重启会话（或 `/reload-plugins`）。运行数据统一在 `~/.local/share/bilinote-mcp/`。
 
 ### 方式二：只装 MCP（不装 Skill）
 
@@ -27,194 +62,126 @@ claude plugin install bilinote@bilinote
 claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
 ```
 
-MCP server 是**会话级常驻进程**（会话开始时启动一次，工具调用不重新拉起）；uvx 每次会话检查一次仓库，**有新 commit 就自动用最新版**。
+即方式一的 MCP 部分。MCP server 是**会话级常驻进程**（会话开始启动一次，工具调用不重新拉起）。
 
-### 方式三：`uv tool install` —— 固定版本、启动最快
+### 方式三：uv tool install —— 固定版本、启动最快
 
 ```bash
 uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
 claude mcp add bilinote -- "$HOME/.local/bin/bilinote-mcp"
 ```
 
-一次性安装后每次会话**直接启动进程（约 1s）**、不访问仓库；但版本被固定，更新需重跑上面的 `uv tool install`（或 `uv tool install --force ...`）。
+每次会话**直接启动进程（约 1s）**、不访问仓库；版本被固定，更新需重跑上面的 `uv tool install --force`。
 
-### 方式四：克隆 + `install.sh`
+> macOS Apple Silicon 想用 **MLX Whisper**（更快的本地转写，可选依赖）：安装时带上
+> `uv tool install --force --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`
+
+### 方式四：克隆 + install.sh
 
 ```bash
 git clone https://github.com/HuangYincan/BiliNote-MCP.git
 cd BiliNote-MCP && ./install.sh
 ```
 
-`install.sh`：创建 venv → 安装依赖 → 注册 MCP → 安装 Skill（同 marketplace 方式）→ **自动弹出 `bilinote-mcp setup` 交互向导**（隐藏输入 LLM API key + 选语音转写引擎，可选立即下载 whisper 模型）。非交互终端会跳过，可稍后手动跑 `bilinote-mcp setup`。
+无 uv 也能用（脚本用 pip 建 `.venv`）。install.sh：创建 venv → 注册 MCP → 安装 Skill → **自动弹出 `bilinote-mcp setup` 向导**。非交互终端会跳过，可稍后手动跑。
 
-### 装完还要做什么（配置 LLM + 转写）
+## 配置（装完必做）
 
-以上安装只让 MCP / Skill 跑起来；**LLM API key 和语音转写引擎需单独配置**（key 是你的、模型要选）。通用入口是 `bilinote-mcp setup` 交互向导（隐藏输入 key、选转写引擎、可选下载模型）：
+> 安装只让 MCP / Skill 跑起来；**LLM API key 和语音转写引擎需单独配置**（key 是你的、模型要选）。所有方式共用同一数据目录（`~/.local/share/bilinote-mcp/`），配好即会话内生效。
 
-- 方式一 / 二（uvx）：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup`
-- 方式三（uv tool install）：`bilinote-mcp setup`
-- 方式四（install.sh）：已自动弹出；也可 `./.venv/bin/bilinote-mcp setup`
-
-> marketplace 的 MCP 与 `uvx ... setup` 共用同一个数据目录（`~/.local/share/bilinote-mcp/`），setup 配好即会话内生效，无需重复配置。
-
-> 运行数据（SQLite、笔记、截图、配置）统一存在 `~/.local/share/bilinote-mcp/`（源码运行时在仓库 `data/`），不会写进安装目录。
-
-### 手动安装等价步骤（源码方式）
+### 交互向导 `setup`（推荐）
 
 ```bash
-uv sync                          # 1. 安装依赖（自动创建 venv）
-# 或 pip install -e .
-
-# 2. 注册 MCP（二选一）
-#    Claude Code 项目级：参考 examples/mcp.example.json（复制为 .mcp.json）
-#    用户级：claude mcp add bilinote -- .venv/bin/bilinote-mcp
+bilinote-mcp setup        # 未在 PATH 时：uvx --from git+... bilinote-mcp setup
 ```
 
-## 更新
+一次完成：选 LLM 供应商（隐藏输入 key）→ 选转写引擎 + 模型尺寸 →（可选）立即下载 whisper 模型。
 
-- **MCP server**：✅ **自动更新** —— 走 uvx，每次会话启动时自动检查仓库，有新 commit 即用新版（新 commit 后首次连接会重建、稍慢；之后走缓存）。
-- **Skill / 插件**：❌ **手动更新** —— 插件不会自动升级到新 commit。更新命令：
+### 手动 CLI（key 不进对话）
 
 ```bash
-claude plugin disable bilinote@bilinote
-claude plugin install bilinote@bilinote
+bilinote-mcp providers list                                    # 查看（key 掩码）
+bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 给内置供应商填 key
+bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
 ```
 
-（注意 `install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才会重装到最新。）
+### 没有 LLM API key？
 
-源码 / `install.sh` 方式：`git pull && ./install.sh`。
+- **本地免费**：装 [Ollama](https://ollama.com) 并 `ollama pull llama3`。内置 `ollama` 供应商已预置（`http://127.0.0.1:11434/v1`，**无需 key**），`list_models("ollama")` 有模型即可用。
+- **免费额度**：Groq / DeepSeek 等有免费 tier，注册后 `providers set` 填 key。
+- 对 agent 说「我没有 LLM key」，它会先查 Ollama 是否可用，再引导你注册。
 
-## 前提
+## 使用
 
-- **uv**（Python 包管理器，必需 —— uvx/uv tool 方式装 MCP 和 CLI 都靠它）：
-  `curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `brew install uv`
-  > 没有 uv？走「方式四：克隆 + `install.sh`」（脚本内置 pip 兜底，不依赖 uv）。
-- Python ≥ 3.11，<3.14（推荐 3.12）
-- **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`
-- LLM 供应商 API Key（通过 CLI / `update_provider` 工具或复用已有 BiliNote 数据库配置）
-- 本地转写需下载 whisper 模型（`download_transcriber_model`），或改用云端 groq
-- macOS Apple Silicon 想用 **MLX Whisper**（更快的本地转写）：mlx-whisper 是可选依赖，装工具时带上：`uv tool install --force --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`
-- **CLI 命令可用形式**：本文档里的 `bilinote-mcp providers ...` / `bilinote-mcp setup` 需要它已在 PATH（`uv tool install` + `uv tool update-shell` 之后才有）。**PATH 无关的等价写法**：
-  - 有 uv：`uvx --from https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp providers list`
-  - 无 uv（方式四，pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp providers list`
+### 给 agent 用（Claude Code 等）
 
-## 工具一览
+对 agent 说「**给这个视频做笔记**」+ 链接即可，标准流程：
+
+1. `health_check` —— 确认 FFmpeg / 数据库就绪；
+2. `list_providers` —— 确认供应商 key=已填（看不到明文）；没有就先用 CLI 配；
+3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
+4. `get_task_status(task_id)` 轮询（或 `wait_for_note`），等到 `SUCCESS`；
+5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG。
+
+### 手动工具速查（非敏感配置）
+
+| 想做什么 | 用哪个工具 |
+|----------|-----------|
+| 看供应商 / 给内置填 key | `list_providers`（key 掩码） / **CLI** `providers set` |
+| 看 / 加模型 | `list_models(provider_id)` / `add_model(provider_id, "deepseek-chat")` |
+| 本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
+| 云端转写 | `set_transcriber("groq")`（groq 的 key 用 CLI 填） |
+| B 站需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
+| 本地文件 | `generate_note(video_url="/绝对/路径/a.mp4", platform="local", ...)` |
+
+> 涉及 **key 的操作一律走 CLI（对话外）**，工具只做非敏感配置 —— 见[安全说明](#安全api-key)。
+
+## 工具参考
 
 | 工具 | 说明 |
 |------|------|
 | `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
-| `list_providers` / `add_provider` | 查看 / 新增 LLM 供应商 |
-| `list_models` / `add_model` | 查看（实时/回退本地） / 手动添加模型 |
+| `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
+| `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
 | `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
 | `list_transcriber_models` / `download_transcriber_model` | whisper 模型管理 |
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
 | `validate_url` | 判断视频链接属于哪个平台 |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
 
-## 使用说明
+## 更新
 
-### 给 agent 用（Claude Code 等）
-
-装上 MCP 后，直接对 agent 说「**给这个视频做笔记**」+ 链接即可。标准流程：
-
-1. `health_check` —— 确认 FFmpeg / 数据库就绪；
-2. `list_providers` —— 找可用的 LLM 供应商（没有就 `add_provider`，再 `list_models` / `add_model` 配好模型）；
-3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
-4. `get_task_status(task_id)` 轮询（或 `wait_for_note`），等到 `SUCCESS`；
-5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG。
-
-### 手动配置速查
-
-| 想做什么 | 用哪个工具 |
-|----------|-----------|
-| 看 / 加 LLM 供应商 | `list_providers` / `add_provider(name, api_key, base_url, type)` |
-| 看 / 加模型 | `list_models(provider_id)` / `add_model(provider_id, "deepseek-chat")` |
-| 本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
-| 云端转写 | `set_transcriber("groq")`（需已有 id 为 `groq` 的供应商） |
-| B 站需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
-| 本地文件 | `generate_note(video_url="/绝对/路径/a.mp4", platform="local", ...)` |
-
-工具逐个说明、agent 工作流与故障排查见 [docs/04-使用手册.md](docs/04-使用手册.md)。
-
-## 配置示例
-
-### 例一：配置 LLM 供应商（内置预置，填 key 即可）
-
-全新安装后 `list_providers` 已预置 7 个内置供应商（openai / deepseek / qwen / groq / ollama…），**id 固定、base_url 正确，只需填 API key**。**key 在独立终端填（对话外），agent 侧只确认「填没填」**：
+- **MCP server**：✅ **自动更新** —— 走 uvx，每次会话启动自动检查仓库，有新 commit 即用新版（新 commit 后首次连接会重建、稍慢；之后走缓存）。
+- **Skill / 插件**：❌ **手动更新** —— 插件不会自动升级：
 
 ```bash
-# ① 独立终端（key 不进对话）
-bilinote-mcp providers set deepseek --api-key 'sk-你的key'
-bilinote-mcp providers list                # 确认 deepseek 行 key=已填
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
 ```
 
-```text
-# ② agent 侧
-list_providers()                           # deepseek key=已填（掩码，看不到明文）
-list_models("deepseek")                    # 实时拉 /v1/models；失败回退本地库
-add_model(provider_id="deepseek", model_name="deepseek-chat")   # 实时拉不到时手动加
-generate_note(video_url="https://www.bilibili.com/video/BVxxxx", provider_id="deepseek", model_name="deepseek-chat")
-```
+（`install` 单独执行会被当作「已安装」跳过，必须先 `disable` 再 `install` 才重装到最新。）
 
-其他内置供应商同理：openai → `https://api.openai.com/v1`、qwen → `https://dashscope.aliyuncs.com/compatible-mode/v1`（都是 OpenAI 兼容协议，`type` 只是标识）。
+- 源码 / `install.sh` 方式：`git pull && ./install.sh`。
 
-**中转站 / 自建网关**：在独立终端用 CLI 新增（key 不进对话）：
+## 安全（API Key）
+
+**红线：不要在对话里把 key 发给 agent。** agent 的对话内容会发送到它的 LLM 上游，key 一旦出现在对话里就等于交给了上游。**key 一律在独立终端走 CLI**（`!` 前缀的命令文本也在对话里，同样不行）：
 
 ```bash
-bilinote-mcp providers add --name 我的中转站 --api-key 'sk-中转站发的key' --base-url 'https://relay.example.com/v1'
-bilinote-mcp providers list                # 记下新供应商 id
+bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 独立终端执行
+bilinote-mcp providers list                                     # 查看（key 掩码）
 ```
 
-agent 侧 `list_models(新id)` 拉模型；拉不到就 `add_model` 手动加。
-
-### 没有 LLM API key？
-
-- **本地免费（推荐）**：装 [Ollama](https://ollama.com) 并 `ollama pull llama3`。内置 `ollama` 供应商已预置（base_url `http://localhost:11434/v1`，**无需 key**），`list_models("ollama")` 看到模型即可 `generate_note(provider_id="ollama", model_name="llama3")`。
-- **免费额度**：Groq / DeepSeek 等有免费 tier，注册后 `update_provider` 填 key 即可。
-- 直接对 agent 说「我没有 LLM key」，它会先查 Ollama 是否可用，再引导你注册。
-
-### 例二：切换语音转写引擎
-
-```text
-get_transcriber_config()           # 当前：fast-whisper / tiny
-list_transcriber_models()          # 各尺寸下载状态
-
-# 本地离线转写（推荐，免费）：切引擎 + 下载对应尺寸模型
-set_transcriber("fast-whisper", "small")
-download_transcriber_model("small")            # 后台下载；list_transcriber_models 看到 state=done 即就绪
-list_transcriber_models()
-
-# 云端转写（快、省资源，需 key）：先在独立终端填 key，再直接切
-#   独立终端：bilinote-mcp providers set groq --api-key 'gsk-你的key'
-set_transcriber("groq")
-get_transcriber_config()           # ready=true 即就绪
-```
-
-> whisper 模型尺寸（约）：tiny 75MB / base 145MB / small 460MB / medium 1.5GB / large-v3 3GB。够用选 small 及以下，追求精度再上 medium+。
-> 首次用 fast-whisper 时任务会卡在 `INITIALIZING`（正在下载模型），属正常。
-
-## 安全说明（API Key）
-
-**关键：不要在对话里把 key 发给 agent。** agent 的对话内容会发送到它的 LLM 上游，key 一旦出现在对话里，就等于交给了上游。要提供 key，请用「对话外」通道 —— 在终端直接执行（`bilinote-mcp` 支持子命令）：
-
-```bash
-bilinote-mcp providers set deepseek --api-key 'sk-你的key'                # 给内置供应商填 key
-bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
-bilinote-mcp providers list                                               # 查看（key 掩码）
-```
-
-（`uvx --from git+... bilinote-mcp providers ...` 或 `~/.local/bin/bilinote-mcp providers ...` 均可。**注意在 Claude Code 之外的独立终端执行** —— `!` 前缀的命令文本也在对话里，同样会被发到模型上游。）
-
-- **agent 只需要知道「key 填没填」**：`list_providers` 返回掩码（`sk-S***cdef`），`add_provider` / `update_provider` 工具不回显 key，相关日志已打码。
+- **agent 只需要知道「key 填没填」**：`list_providers` 返回掩码（`sk-S***cdef`），add/update 工具不回显 key，相关日志已打码。
 - **存哪**：key 只存在本地 SQLite（`~/.local/share/bilinote-mcp/bili_note.db` 或源码 `data/`），已 gitignore，**不会进 GitHub**。
 - **提醒**：key 以明文存在本地数据库（与上游 BiliNote 一致）。若机器可能被他人使用，建议后续用系统 keychain 加密存储。
 
-## Skill（Claude Code）
+## Skill
 
-仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它会教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
+仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
 
-通过 plugin marketplace 一键安装（同时装好 Skill 与 MCP server）：
+通过插件 marketplace 安装（同时装好 Skill 与 MCP server）：
 
 ```bash
 claude plugin marketplace add HuangYincan/BiliNote-MCP
