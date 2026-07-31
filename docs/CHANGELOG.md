@@ -2,6 +2,11 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 发布后维护（2026-07-31）
+
+- 首次推送到 GitHub（`HuangYincan/BiliNote-MCP`，PUBLIC）。
+- README 补全「一键安装」：仓库地址、clone 步骤、`install.sh` 等价手动步骤。
+
 ## 节点 1：仓库脚手架（2026-07-31）
 
 - 新建独立仓库 `BiliNote-Mcp`（git init，分支 main）。
