@@ -13,6 +13,12 @@
   - 新增 `bilinote_mcp/provider_probe.py`（`probe_models` / `probe_chat` 唯一 probe 源）；server 的 `_fetch_live_models` 改为委托它（Ollama 等无 key 供应商现在也能实时列模型）。
   - 坑位处理：选择项 name 不含 ANSI（原样显示）；探测用未掩码 key（`get_provider_by_id`）；子菜单左键只退一级；空 key 归一化只影响探测不影响生成。
   - README（配置①/`providers test`/速查表）、docs/04（子菜单 + 默认模型）、SKILL.md（默认模型一行）同步。
+- **setup ③ 其他新增「视频理解默认」+ SKILL 强制问参数**：
+  - setup ③ 可配**视频理解默认**（开/关 + 帧间隔秒数），持久化 `app_config.json`（`video_understanding` / `video_interval`）。
+  - `generate_note` 的 `video_understanding` / `video_interval` 改为 `Optional`：**不传时**自动套用 setup 默认（默认关 / 0→6s）；**显式传入始终覆盖**（向后兼容）。
+  - SKILL「确认参数」强化：**没有明确信息前必须问**用户 —— 是否启用视频理解 + 帧间隔秒数都要问；**即使配了默认，本次也要先问**，只有用户说「你定/用默认」才用默认值。
+  - 纯文本兜底向导补「③ 其他（视频理解默认）」。
+  - README / docs/04（③ 描述 + 视频理解章节）、SKILL.md 同步。
 
 ## 维护（2026-07-31）
 

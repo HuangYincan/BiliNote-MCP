@@ -208,7 +208,7 @@ def _wizard(inq) -> None:
             choices=[
                 {"name": "① LLM 供应商（填 key / 检测连接 / 默认模型）", "value": "llm"},
                 {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
-                {"name": "③ 其他（平台 Cookie / 默认笔记位置）", "value": "other"},
+                {"name": "③ 其他（平台 Cookie / 默认笔记位置 / 视频理解默认）", "value": "other"},
                 {"name": "✔ 完成 / 退出", "value": "exit"},
             ],
             default="llm",
@@ -489,6 +489,8 @@ def _wizard_other(inq) -> None:
             from app.services.cookie_manager import CookieConfigManager
 
             notes_dir = get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
+            vu_on = bool(get_app_config().get("video_understanding", False))
+            vu_int = int(get_app_config().get("video_interval") or 6)
             _show_header("③ 其他设置")
             pick = inq.select(
                 message="选择要配置的项（← 返回）",
@@ -496,6 +498,7 @@ def _wizard_other(inq) -> None:
                     {"name": "B 站扫码登录（自动获取 SESSDATA，AI 字幕用）", "value": "bili-login"},
                     {"name": "平台 Cookie（手动填，B 站等需登录内容）", "value": "cookie"},
                     {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
+                    {"name": f"视频理解默认（{'开' if vu_on else '关'} / {vu_int}s，需多模态模型）", "value": "video"},
                     {"name": "← 返回主菜单", "value": "back"},
                 ],
                 keybindings=_KB,
@@ -535,6 +538,23 @@ def _wizard_other(inq) -> None:
                 if new_dir:
                     set_app_config("notes_dir", new_dir)
                     print(f"{_GREEN}✓ 已保存默认笔记位置：{new_dir}{_RESET}", file=sys.stdout)
+            elif pick == "video":
+                _show_header("视频理解默认")
+                print(f"{_DIM}视频理解把画面按间隔抽帧发给多模态 LLM（需 qwen-vl / gpt-4o 等；会下载整个视频、比纯转写慢）。{_RESET}", file=sys.stdout)
+                cur_on = bool(get_app_config().get("video_understanding", False))
+                cur_int = int(get_app_config().get("video_interval") or 6)
+                on = inq.confirm(message="默认开启视频理解？", default=cur_on, keybindings=_KB).execute()
+                set_app_config("video_understanding", bool(on))
+                iv = inq.text(message=f"帧间隔秒数（当前 {cur_int}，默认 6）", keybindings=_KB).execute()
+                if iv:
+                    try:
+                        iv = max(1, int(iv))
+                    except ValueError:
+                        iv = 6
+                    set_app_config("video_interval", iv)
+                else:
+                    iv = cur_int
+                print(f"{_GREEN}✓ 已保存视频理解默认：{'开' if on else '关'} / {iv}s{_RESET}", file=sys.stdout)
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
 
@@ -624,6 +644,20 @@ def _setup_cli_fallback() -> None:
             _download_whisper(size)
         except Exception as e:
             print(f"   ⚠ 下载失败：{e}", file=sys.stdout)
+
+    print("\n③ 其他（视频理解默认）：", file=sys.stdout)
+    print("   视频理解把画面按间隔抽帧发给多模态 LLM（需 qwen-vl / gpt-4o 等；会下载整个视频、比纯转写慢）", file=sys.stdout)
+    cur_on = bool(get_app_config().get("video_understanding", False))
+    cur_int = int(get_app_config().get("video_interval") or 6)
+    on = _ask(f"   默认开启视频理解？[y/N]（当前 {'开' if cur_on else '关'}）", default="N").lower() == "y"
+    set_app_config("video_understanding", bool(on))
+    iv = _ask(f"   帧间隔秒数（当前 {cur_int}，默认 6）", default=str(cur_int))
+    try:
+        iv = max(1, int(iv))
+    except ValueError:
+        iv = 6
+    set_app_config("video_interval", iv)
+    print(f"   ✓ 视频理解默认：{'开' if on else '关'} / {iv}s", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
 

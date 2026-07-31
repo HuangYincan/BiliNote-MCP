@@ -35,13 +35,13 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **默认模型**：若用户已通过 `bilinote-mcp setup` 给该供应商配了默认模型（`bilinote-mcp providers list` 显示 `默认=`），且用户说「用默认」—— `generate_note` **不传 `model_name`** 会自动用默认（`default_model:<provider_id>` 优先于 DB 第一条）。
    - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
    - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…），问一句；
-   - **是否视频理解**（看画面）：默认否；要则配多模态模型 + `video_understanding=True, video_interval=6, grid_size=[3,3]`；
+   - **是否视频理解**（看画面，需多模态模型）：**没有明确信息前必须问** —— 先问是否启用，要则**再问帧间隔秒数**（默认 6，如 3/5/10）；**即使 setup ③ 配了默认，本次也要先问用户**，只有用户说「你定/用默认」才用默认值；`video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`；
    - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
    - 用户说「你定」才跳过追问、用默认值。
 5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
-   - 视频理解：加 `video_understanding=True, video_interval=6, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
+   - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
 6. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
 7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
@@ -58,6 +58,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | 切云端转写 | `update_provider("groq", api_key=...)` 后 `set_transcriber("groq")` |
 | B站等需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
 | 本地文件 | `generate_note(video_url="/绝对/路径/xxx.mp4", platform="local", ...)` |
+| 视频理解默认（setup ③ 可配） | 用户说「用默认」时 `generate_note` 不传 `video_understanding`/`video_interval` 即自动套用（默认关 / 6s）；显式传入始终覆盖 |
 
 ## 并发与多会话
 

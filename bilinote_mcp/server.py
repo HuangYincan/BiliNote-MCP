@@ -185,8 +185,8 @@ def generate_note(
     style: Optional[str] = None,
     screenshot: bool = False,
     link: bool = False,
-    video_understanding: bool = False,
-    video_interval: int = 0,
+    video_understanding: Optional[bool] = None,
+    video_interval: Optional[int] = None,
     grid_size: Optional[List[int]] = None,
     notes_dir: Optional[str] = None,
 ) -> str:
@@ -199,7 +199,7 @@ def generate_note(
     - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
     - style: 输出风格（minimal/detailed/academic/tutorial/xiaohongshu 等）；
-    - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；
+    - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
     - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
     - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
 
@@ -228,6 +228,13 @@ def generate_note(
         raise ValueError(
             f"供应商 {provider_id} 还没有可用模型：请先 list_models 查看，或 add_model 添加模型名"
         )
+
+    # 视频理解默认：参数没传（None）时用 setup ③ 配置的默认（默认关 / 0→6s）；
+    # 显式传 False/0/具体秒数仍是显式值，覆盖默认
+    if video_understanding is None:
+        video_understanding = bool(get_app_config().get("video_understanding", False))
+    if video_interval is None:
+        video_interval = int(get_app_config().get("video_interval") or 0)
 
     task_id = uuid.uuid4().hex
     _write_status(task_id, TaskStatus.PENDING, message="任务排队中")

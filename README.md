@@ -111,7 +111,7 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 
 - **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
 - **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
-- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）。
+- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）。
 
 ### 手动 CLI（key 不进对话）
 
@@ -184,6 +184,7 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - 每 `video_interval` 秒抽一帧，按 `grid_size` 拼成网格图，以 base64 内嵌发给 LLM；
 - **需多模态（vision）模型**，deepseek-chat 等纯文本模型不支持；
 - `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
+- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（SKILL 仍要求**每次先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值）；
 - 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
 
 ### 进阶：图片插入（便携笔记）
