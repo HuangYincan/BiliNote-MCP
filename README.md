@@ -1,4 +1,4 @@
-# BiliNote-Mcp
+# BiliNote-MCP
 
 把 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的核心能力 —— **视频链接 → AI Markdown 笔记** —— 封装成 MCP 工具与 Claude Code Skill，供 agent 直接调用。
 
@@ -81,6 +81,43 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
 | `validate_url` | 判断视频链接属于哪个平台 |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
+
+## 使用说明
+
+### 给 agent 用（Claude Code 等）
+
+装上 MCP 后，直接对 agent 说「**给这个视频做笔记**」+ 链接即可。标准流程：
+
+1. `health_check` —— 确认 FFmpeg / 数据库就绪；
+2. `list_providers` —— 找可用的 LLM 供应商（没有就 `add_provider`，再 `list_models` / `add_model` 配好模型）；
+3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
+4. `get_task_status(task_id)` 轮询（或 `wait_for_note`），等到 `SUCCESS`；
+5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG。
+
+### 手动配置速查
+
+| 想做什么 | 用哪个工具 |
+|----------|-----------|
+| 看 / 加 LLM 供应商 | `list_providers` / `add_provider(name, api_key, base_url, type)` |
+| 看 / 加模型 | `list_models(provider_id)` / `add_model(provider_id, "deepseek-chat")` |
+| 本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
+| 云端转写 | `set_transcriber("groq")`（需已有 id 为 `groq` 的供应商） |
+| B 站需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
+| 本地文件 | `generate_note(video_url="/绝对/路径/a.mp4", platform="local", ...)` |
+
+工具逐个说明、agent 工作流与故障排查见 [docs/04-使用手册.md](docs/04-使用手册.md)。
+
+## Skill（Claude Code）
+
+仓库自带 Claude Code Skill —— `.claude/skills/bilinote/SKILL.md`，它会教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
+
+安装（把 Skill 链接到用户级目录）：
+
+```bash
+ln -sf "$(pwd)/.claude/skills/bilinote" ~/.claude/skills/bilinote
+```
+
+装好后重启 Claude Code 会话，对 Claude 说「**帮我给这个视频做笔记**」+ 链接，Skill 自动触发并驱动 MCP 工具。
 
 ## 文档
 
