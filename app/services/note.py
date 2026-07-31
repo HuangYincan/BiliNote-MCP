@@ -423,8 +423,10 @@ class NoteGenerator:
 
         # 判断是否需要下载视频
         need_video = screenshot or video_understanding
-        if screenshot and not grid_size:
-            grid_size = [2, 2]
+        # grid_size 缺省：截图模式 [2,2]；视频理解模式 [3,3]。空 grid_size 会让
+        # VideoReader 收到空 tuple 报「视频处理失败」，故统一在这里兜底
+        if need_video and not grid_size:
+            grid_size = [2, 2] if screenshot else [3, 3]
 
         frame_interval = video_interval if video_interval and video_interval > 0 else 6
         if need_video:

@@ -26,6 +26,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 用 `update_provider(provider_id, api_key)` 填；自建用 `add_provider(name, api_key, base_url, type)`。再 `list_models(provider_id)`（实时拉取）或 `add_model(provider_id, model_name)`（手动添加）确认模型可用。
 4. **`generate_note(video_url=url, provider_id=..., model_name=..., quality="medium")`** —— 提交任务，拿到 `task_id`。
    - 可加 `style`（如 `tutorial` / `academic` / `xiaohongshu`）、`format=["toc","link"]` 等。
+   - 用户想看**画面内容**（不只是听讲）：加 `video_understanding=True, video_interval=6, grid_size=[3,3]`，并必须选**多模态模型**（如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持，会退回纯文本）。
 5. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
 6. **拿到结果后**：`result.markdown` 就是笔记本体。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索，你读到的就是全部内容；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 7. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接）。

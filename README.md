@@ -136,11 +136,25 @@ bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https
 
 > 涉及 **key 的操作一律走 CLI（对话外）**，工具只做非敏感配置 —— 见[安全说明](#安全api-key)。
 
+### 进阶：视频理解（画面切片）
+
+想让 agent 按时间间隔抽**视频画面**发给多模态 LLM（如 qwen-vl / gpt-4o）做「看画面」的理解，`generate_note` 直接支持：
+
+```text
+generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
+              video_understanding=True, video_interval=6, grid_size=[3, 3])
+```
+
+- 每 `video_interval` 秒抽一帧，按 `grid_size` 拼成网格图，以 base64 内嵌发给 LLM；
+- **需多模态（vision）模型**，deepseek-chat 等纯文本模型不支持；
+- `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
+- 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
+
 ## 工具参考
 
 | 工具 | 说明 |
 |------|------|
-| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id |
+| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持 `video_understanding` 视频理解，见[使用说明](#进阶视频理解画面切片)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
 | `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
