@@ -34,9 +34,10 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **LLM 模型**（必须问）：`list_models(provider_id)` 拿到模型后，**把列表呈现给用户、让用户指定一个**（如「用 `gemini-2.5-flash` 还是 `deepseek-chat`？」）。**用户明确说出模型名（或说「你定」）之前，不要调用 `generate_note`**。
    - **默认模型**：若用户已通过 `bilinote-mcp setup` 给该供应商配了默认模型（`bilinote-mcp providers list` 显示 `默认=`），且用户说「用默认」—— `generate_note` **不传 `model_name`** 会自动用默认（`default_model:<provider_id>` 优先于 DB 第一条）。
    - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
-   - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…），问一句；
+   - **笔记风格**（必须问）：默认 `detailed`（详细）—— **把真实风格列表呈现给用户、让用户指定一个**：`minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，**或自定义**（问用户想要什么风格，把描述通过 `extras` 传入，如 `extras="笔记风格要求：<用户描述>"`）；**没有明确信息前不要自行默认 `detailed`**；
    - **是否视频理解**（看画面，需多模态模型）：**没有明确信息前必须问** —— 先问是否启用，要则**再问帧间隔秒数**（默认 6，如 3/5/10）；**即使 setup ③ 配了默认，本次也要先问用户**，只有用户说「你定/用默认」才用默认值；`video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`；
    - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
+   - **是否后续优化**（生成后基于完整字幕精修）：**必须问** —— 直接问用户「笔记生成后，要不要我再根据完整字幕/转写做后续优化（补齐遗漏、修正不一致、增强结构）？」用户说要才做（回答会留到步骤 9 执行）；
    - 用户说「你定」才跳过追问、用默认值。
 5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
@@ -45,10 +46,12 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 6. **轮询**：`get_task_status(task_id)` 直到 `SUCCESS`（长视频可能要几分钟；也可 `wait_for_note(task_id, timeout=120)` 一次等 120 秒，超时再续）。
 7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
-9. **后续优化（必须问，不调工具）**：**问用户是否要根据已生成的笔记 + 提取的字幕（`result.transcript` 完整转写）做后续优化** —— 补齐遗漏细节、修正与字幕不一致处、重排/增强结构。用户要优化时：
-   - 读 `result.markdown` 与 `result.transcript`，**直接在回答里产出优化后的笔记**（原笔记保留给用户对比）；
-   - **转写可能很长**（2 小时视频的完整字幕超出单次上下文）：先如实告诉用户这个限制，改为**按关键章节 / 已读部分精修**，或请用户指定要重点优化的章节；
-   - 优化**不写回** `note_dir`（那是原始产物）；要落盘先问用户存哪。
+9. **后续优化 —— 必须处理，不能跳过**：
+   - 若步骤 4 已问且用户说要优化：**呈现笔记后立即执行**；
+   - 若还没问过：**呈现笔记后必须补问**（原话：「要不要我再根据完整字幕/转写对这份笔记做后续优化？」）；
+   - 执行：读 `result.markdown` + `result.transcript`（完整转写），在回答里产出**优化后的笔记**（补齐遗漏细节、修正与字幕不一致处、重排/增强结构），原笔记保留对比；
+   - 转写可能很长（2 小时视频完整字幕超出单次上下文）：先如实告知限制，按关键章节/已读部分精修，或请用户指定重点章节；
+   - 优化**不写回** `note_dir`（原始产物）；要落盘先问用户存哪。
 
 ## 配置要点
 

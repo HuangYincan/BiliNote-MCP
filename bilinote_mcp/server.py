@@ -189,6 +189,7 @@ def generate_note(
     video_interval: Optional[int] = None,
     grid_size: Optional[List[int]] = None,
     notes_dir: Optional[str] = None,
+    extras: Optional[str] = None,
 ) -> str:
     """提交一个视频链接/本地文件，异步生成 AI Markdown 笔记。
 
@@ -198,7 +199,8 @@ def generate_note(
     - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增）；
     - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
-    - style: 输出风格（minimal/detailed/academic/tutorial/xiaohongshu 等）；
+    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；
+    - extras: 附加到 prompt 末尾的自定义指令（如自定义笔记风格要求）；内置风格用 style，自定义风格用 extras；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
     - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
     - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
@@ -248,6 +250,7 @@ def generate_note(
         screenshot=screenshot,
         _format=format or [],
         style=style,
+        extras=extras,
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],

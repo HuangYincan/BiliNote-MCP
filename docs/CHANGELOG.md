@@ -20,6 +20,11 @@
   - 纯文本兜底向导补「③ 其他（视频理解默认）」。
   - README / docs/04（③ 描述 + 视频理解章节）、SKILL.md 同步。
 - **SKILL「后续优化」步骤**：生成成功后 agent **必须问用户**是否要根据已生成笔记 + 提取的字幕（`result.transcript` 完整转写）做后续优化（补齐细节/修正不一致/增强结构）；agent 侧精修、**不新增 MCP 工具**；转写过长时如实告知限制并按章节精修；不写回 `note_dir` 原始产物。
+- **SKILL 强制问清单扩展 + `extras` 自定义风格**：
+  - **笔记风格改为强制提问**：把**真实 9 种风格**（从 `app/gpt/prompt_builder.py` `note_styles` 核对）呈现给用户选 —— `minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要；没有明确信息前不得自行默认 `detailed`。
+  - **支持自定义风格**：`generate_note` 新增 `extras` 参数（追加到 prompt 末尾的自定义指令，note.py 本已支持、之前未暴露）—— 用户自定义风格时把描述经 `extras` 传入。
+  - **后续优化提前到步骤 4**（与模型/视频理解等并列强制问「生成后要不要基于字幕优化」），步骤 9 强化为「**必须处理，不能跳过**」（已答过则直接执行，没问过则呈现后必须补问）。
+  - README / docs/04（工具参考补 `extras`）同步。
 
 ## 维护（2026-07-31）
 

@@ -206,7 +206,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 
 | 工具 | 说明 |
 |------|------|
-| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记，见[使用说明](#进阶视频理解画面切片)） |
+| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
 | `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
