@@ -1,7 +1,7 @@
-# 运行时数据
-data/
-models/
-note_results/
+# 运行时数据（根锚定，避免误伤 app/db/models 等源码目录）
+/data/
+/models/
+/note_results/
 
 # 数据库
 *.db
