@@ -98,8 +98,9 @@ def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="
     elif transcriber_enum == TranscriberType.MLX_WHISPER:
         if not MLX_WHISPER_AVAILABLE:
             raise RuntimeError(
-                "MLX Whisper 不可用：需要 macOS 平台并安装 mlx_whisper 包 (pip install mlx_whisper)。"
-                "请在「音频转写配置」页面切换到其他转写引擎。"
+                "MLX Whisper 不可用：需要 macOS 平台并安装 mlx_whisper 包。请用 "
+                "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
+                "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
             )
         return get_mlx_whisper_transcriber(whisper_model_size)
 

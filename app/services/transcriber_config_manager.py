@@ -87,6 +87,22 @@ class TranscriberConfigManager:
         if ttype not in ("fast-whisper", "mlx-whisper"):
             return result  # 在线引擎无需本地模型
 
+        # 先确认运行环境装了对应包（模型文件在 ≠ 引擎能 import；如 mlx_whisper 是可选依赖）
+        import importlib.util
+
+        pkg = "mlx_whisper" if ttype == "mlx-whisper" else "faster_whisper"
+        if importlib.util.find_spec(pkg) is None:
+            result["ready"] = False
+            if ttype == "mlx-whisper":
+                result["reason"] = (
+                    f"{ttype} 不可用：未安装 mlx_whisper 包。请用 "
+                    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
+                    "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                )
+            else:
+                result["reason"] = f"{ttype} 不可用：未安装 {pkg} 包"
+            return result
+
         # 从 utils.model_status 取纯函数（本仓库已剥离 routers.config 的 Web 层）
         try:
             from app.utils.model_status import (
