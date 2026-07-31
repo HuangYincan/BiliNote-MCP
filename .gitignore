@@ -2,6 +2,7 @@
 /data/
 /models/
 /note_results/
+/config/
 
 # 数据库
 *.db
