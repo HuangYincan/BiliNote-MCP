@@ -56,7 +56,7 @@ uv sync                          # 1. 安装依赖（自动创建 venv）
 # 或 pip install -e .
 
 # 2. 注册 MCP（二选一）
-#    Claude Code 项目级：在项目根放 .mcp.json（见仓库示例）
+#    Claude Code 项目级：参考 examples/mcp.example.json（复制为 .mcp.json）
 #    用户级：claude mcp add bilinote -- .venv/bin/bilinote-mcp
 ```
 
