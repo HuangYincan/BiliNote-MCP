@@ -101,20 +101,18 @@ def _download_whisper(size: str) -> None:
 
 
 def _download_mlx_model(size: str) -> None:
-    """在终端下载 mlx-whisper 模型（仅 macOS，阻塞，带进度条）。"""
-    try:
-        from app.transcriber.mlx_whisper_transcriber import MLX_MODEL_MAP
-    except ImportError:
-        raise RuntimeError(
-            "mlx-whisper 未安装：请用 `uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
-            "（或 `uvx --from ... --with mlx-whisper`）安装后重试"
-        )
+    """在终端下载 mlx-whisper 模型（仅 macOS，阻塞，带进度条）。
+
+    下载只需 huggingface_hub，**不 import mlx_whisper** —— 其依赖链（numba 等）
+    有循环导入风险，且下载模型根本不需要 mlx 运行时。
+    """
+    from app.utils.model_status import MLX_REPO_MAP
     from app.utils.path_helper import get_model_dir
     from huggingface_hub import snapshot_download
 
-    repo_id = MLX_MODEL_MAP.get(size)
+    repo_id = MLX_REPO_MAP.get(size)
     if not repo_id:
-        raise ValueError(f"未找到 mlx 模型映射: {size}（可选: {', '.join(MLX_MODEL_MAP.keys())}）")
+        raise ValueError(f"未找到 mlx 模型映射: {size}（可选: {', '.join(MLX_REPO_MAP.keys())}）")
     print(f"正在下载 mlx-whisper-{size}（{repo_id}）…", file=sys.stdout)
     snapshot_download(
         repo_id=repo_id,
