@@ -604,6 +604,10 @@ def _login_cli(argv) -> None:
                 CookieConfigManager().set("bilibili", f"SESSDATA={sess}")
                 print(f"{_GREEN}✓ 已保存 B 站 SESSDATA —— AI 字幕可直接用了{_RESET}", file=sys.stdout)
                 print("（下次生成 B 站笔记会优先用 AI 字幕、跳过语音识别）", file=sys.stdout)
+                try:
+                    input("（按回车返回）", )
+                except (EOFError, KeyboardInterrupt):
+                    pass
                 return
             # B 站状态码：86101=未扫码（安静等待）；86090=已扫码待确认；86038=过期
             if st == 86090 and last_status != 86090:
@@ -611,6 +615,10 @@ def _login_cli(argv) -> None:
                 last_status = 86090
             elif st == 86038:
                 print(f"{_YELLOW}二维码已过期，请重新运行 `bilinote-mcp login bilibili`{_RESET}", file=sys.stdout)
+                try:
+                    input("（按回车返回）", )
+                except (EOFError, KeyboardInterrupt):
+                    pass
                 return
     except KeyboardInterrupt:
         print("（已取消）", file=sys.stdout)

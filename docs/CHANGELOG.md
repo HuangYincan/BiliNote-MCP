@@ -39,6 +39,7 @@
 - **B 站扫码登录 `bilinote-mcp login bilibili`**：终端渲染 ASCII 二维码（qrcode 库）→ 用户 B 站 App 扫码 → 自动轮询 → 提取并保存 SESSDATA（`CookieConfigManager`）。setup 向导「③ 其他」加「B 站扫码登录」选项。SKILL：B 站视频优先 AI 字幕，引导用户扫码/手动；README/docs 补命令与说明。已验证二维码渲染 + SESSDATA 提取保存（mock 测试）。
 - **修扫码登录两处**：① 状态码搞反 —— B 站 `86101` 是**未扫码**（安静等待）、`86090` 才是已扫码待确认；② 成功 URL 可能是 **crossDomain ticket**（不带 SESSDATA query）—— 改为用 session 跟随重定向、从 Set-Cookie 提取 SESSDATA。均已 mock 验证。
 - **修 SESSDATA 多条 cookie 冲突**：跟随 crossDomain URL 时 B 站会给不同 domain/path 设多条同名 SESSDATA，`requests.cookies.get()` 抛 `CookieConflictError` —— 改为手动遍历取第一条（mock 验证多 cookie 场景）。
+- **扫码登录成功/过期后暂留**：成功保存或二维码过期后显示结果并「（按回车返回）」，不再立刻跳回上级菜单（与下载流程一致）。
 
 ## 发布后维护（2026-07-31）
 
