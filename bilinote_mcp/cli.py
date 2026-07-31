@@ -520,17 +520,23 @@ def _transcriber_cli(argv) -> None:
 
 
 def main() -> None:
-    """入口：providers / setup / transcriber 走轻量 CLI，其余进入 MCP server（stdio）。"""
-    if len(sys.argv) > 1 and sys.argv[1] == "providers":
-        _providers_cli(sys.argv[2:])
+    """入口：providers / setup / transcriber 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
+    known = ("providers", "setup", "transcriber")
+    if len(sys.argv) > 1 and sys.argv[1] in known:
+        if sys.argv[1] == "providers":
+            _providers_cli(sys.argv[2:])
+        elif sys.argv[1] == "setup":
+            _setup_cli()
+        else:
+            _transcriber_cli(sys.argv[2:])
         return
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        _setup_cli()
-        return
-    if len(sys.argv) > 1 and sys.argv[1] == "transcriber":
-        _transcriber_cli(sys.argv[2:])
-        return
-    # MCP 模式：懒加载完整流水线（server.py）
+    if len(sys.argv) > 1:
+        # 未知参数（如 uvx 选项写错位置）→ 报错而不是静默启动 MCP server
+        print(f"未知子命令: {sys.argv[1]}", file=sys.stderr)
+        print(f"用法: bilinote-mcp {' | '.join(known)} ...", file=sys.stderr)
+        print("（MCP server 模式由客户端无参数启动，不要手动传参）", file=sys.stderr)
+        sys.exit(2)
+    # MCP 模式（无参数，stdio 客户端启动）：懒加载完整流水线（server.py）
     from bilinote_mcp.server import main as _server_main
 
     _server_main()
