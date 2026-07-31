@@ -32,6 +32,7 @@
 - 前提补充：**uv 为必需**（一行安装命令）；无 uv 走方式四（install.sh 内置 pip 兜底）。
 - CLI 命令补充 PATH 无关写法：有 uv 用 `uvx --from ... bilinote-mcp providers ...`；无 uv 用 `<仓库>/.venv/bin/bilinote-mcp providers ...`。
 - install.sh：skill 安装仅在**有 uv** 时走 marketplace（插件内 MCP 走 uvx），无 uv 自动回退本地链接，避免注册出起不来的 MCP。
+- **CLI 轻量化重构**：新增 `bilinote_mcp/cli.py`（console script 改指 `cli:main`）。`bilinote-mcp providers ...` 只导入 provider 相关模块（启动快、无下载器/转写器 import 噪音）；MCP 模式懒加载 `server.py`。修复 CLI 终端输出被导入噪音污染的问题。
 
 ## 节点 1：仓库脚手架（2026-07-31）
 

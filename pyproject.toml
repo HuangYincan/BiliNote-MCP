@@ -37,7 +37,7 @@ dependencies = [
 mlx = ["mlx-whisper"]
 
 [project.scripts]
-bilinote-mcp = "bilinote_mcp.server:main"
+bilinote-mcp = "bilinote_mcp.cli:main"
 
 [tool.uv]
 package = true
