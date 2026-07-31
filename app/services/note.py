@@ -70,7 +70,9 @@ class NoteGenerator:
         self.model_size: str = config_manager.get_whisper_model_size()
         self.device: Optional[str] = None
         self.transcriber_type: str = config_manager.get_transcriber_type()
-        self.transcriber: Transcriber = self._init_transcriber()
+        # 惰性初始化：转写器（含 whisper/mlx 模型下载）只在真正需要音频转写时才加载，
+        # 避免有平台字幕/缓存的任务也被构造时的模型下载阻塞（见 note._transcribe_audio）。
+        self.transcriber: Optional[Transcriber] = None
         self.video_path: Optional[Path] = None
         self.video_img_urls=[]
         logger.info("NoteGenerator 初始化完成")
@@ -575,7 +577,10 @@ class NoteGenerator:
             except Exception as e:
                 logger.warning(f"加载转写缓存失败，将重新转写：{e}")
 
-        # 调用转写器
+        # 调用转写器（惰性初始化：到这一步才真正需要转写，此时才加载模型/实例化）
+        if self.transcriber is None:
+            logger.info(f"首次需要音频转写，惰性初始化转写器：{self.transcriber_type}")
+            self.transcriber = self._init_transcriber()
         try:
             logger.info("开始转写音频")
             transcript = self.transcriber.transcript(file_path=audio_file)
