@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from bilinote_mcp.config import get_app_config, setup_environment
+from bilinote_mcp.provider_probe import probe_models
 
 DATA_DIR = setup_environment()
 
@@ -54,7 +55,6 @@ from app.services.transcriber_config_manager import TranscriberConfigManager
 from app.transcriber import model_download_state as dl_state
 from app.utils.logger import get_logger
 from app.utils.model_status import check_whisper_model_exists, is_downloading
-from app.utils.openai_client import build_openai_client
 from app.utils.path_helper import get_model_dir
 
 from mcp.server.fastmcp import FastMCP
@@ -111,7 +111,7 @@ def _absolutize_images(markdown: Optional[str]) -> str:
 
 def _run_note_task(task_id: str, **params) -> None:
     """在后台线程执行 NoteGenerator.generate，并落盘最终结果。"""
-    _write_status(task_id, "INITIALIZING", message="正在加载转写引擎/模型…")
+    _write_status(task_id, "INITIALIZING", message="正在准备…")
     try:
         generator = NoteGenerator()
         result = generator.generate(task_id=task_id, **params)
@@ -159,17 +159,16 @@ def _detect_platform(url: str) -> str:
 
 def _fetch_live_models(provider: Dict) -> Optional[List[str]]:
     """尝试实时请求供应商的 /v1/models 列表。失败返回 None。"""
-    try:
-        client = build_openai_client(
-            api_key=provider.get("api_key"),
-            base_url=provider.get("base_url"),
-            key_label=f"{provider.get('name', '')} 的 API Key",
-            timeout=15.0,
-        )
-        return [m.id for m in client.models.list().data]
-    except Exception as e:
-        logger.warning(f"实时拉取模型列表失败（回退到本地数据库）: {e}")
+    r = probe_models(
+        provider.get("api_key"),
+        provider.get("base_url"),
+        name=provider.get("name", ""),
+        timeout=15.0,
+    )
+    if not r["ok"]:
+        logger.warning(f"实时拉取模型列表失败（回退到本地数据库）: {r['error']}")
         return None
+    return r["models"]
 
 
 # ---------- MCP 工具 ----------
@@ -197,7 +196,7 @@ def generate_note(
     - platform: 可省略，自动识别；
     - quality: fast / medium / slow；
     - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增）；
-    - model_name: 省略时取该供应商第一个可用模型；
+    - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
     - style: 输出风格（minimal/detailed/academic/tutorial/xiaohongshu 等）；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；
@@ -219,6 +218,8 @@ def generate_note(
     except ValueError:
         raise ValueError(f"quality 必须为 fast / medium / slow，收到: {quality}")
 
+    if not model_name:
+        model_name = get_app_config().get(f"default_model:{provider_id}") or ""
     if not model_name:
         models = get_models_by_provider(provider_id)
         if models:

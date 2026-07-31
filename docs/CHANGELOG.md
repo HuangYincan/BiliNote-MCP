@@ -2,6 +2,18 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-01）
+
+- **setup 向导 LLM 配置：连通性检测 + 默认模型**：
+  - 供应商改为「管理」子菜单：✏ 编辑 key/base_url / 🔌 检测连接 → 列出可用模型 → 设默认 / ← 返回（选中供应商进入，非再点即编辑）。
+  - 检测 = OpenAI 兼容 `GET /v1/models`（一次验证 key/base_url 并拿到模型列表，超时 15s）；`/v1/models` 不可用（部分中转站/自建网关）时降级「最小对话请求」chat 探测。
+  - **默认模型**持久化到 `config/app_config.json`（`default_model:{provider_id}`，同时 dedup 写回 models 表）；`generate_note` **未指定 `model_name` 时优先用配置的默认模型**，再退 DB 第一条。
+  - 新增非交互 `bilinote-mcp providers test <id> [--default MODEL]`；`providers list` 显示 `默认=` 列。
+  - 纯文本兜底向导（无 InquirerPy）同步支持「检测连接 + 选默认」。
+  - 新增 `bilinote_mcp/provider_probe.py`（`probe_models` / `probe_chat` 唯一 probe 源）；server 的 `_fetch_live_models` 改为委托它（Ollama 等无 key 供应商现在也能实时列模型）。
+  - 坑位处理：选择项 name 不含 ANSI（原样显示）；探测用未掩码 key（`get_provider_by_id`）；子菜单左键只退一级；空 key 归一化只影响探测不影响生成。
+  - README（配置①/`providers test`/速查表）、docs/04（子菜单 + 默认模型）、SKILL.md（默认模型一行）同步。
+
 ## 维护（2026-07-31）
 
 - 修复用户侧 MCP 注册：`--from` 需带 `git+` 前缀（`git+https://...`），且用 `claude mcp add --scope user` 注册到用户级。

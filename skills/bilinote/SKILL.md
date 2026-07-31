@@ -32,6 +32,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
 4. **确认参数（用户没明确指定前，必须先问，不得自行默认就提交）**：
    - **LLM 模型**（必须问）：`list_models(provider_id)` 拿到模型后，**把列表呈现给用户、让用户指定一个**（如「用 `gemini-2.5-flash` 还是 `deepseek-chat`？」）。**用户明确说出模型名（或说「你定」）之前，不要调用 `generate_note`**。
+   - **默认模型**：若用户已通过 `bilinote-mcp setup` 给该供应商配了默认模型（`bilinote-mcp providers list` 显示 `默认=`），且用户说「用默认」—— `generate_note` **不传 `model_name`** 会自动用默认（`default_model:<provider_id>` 优先于 DB 第一条）。
    - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
    - **笔记风格**：默认 `detailed`（可选 minimal / academic / tutorial / xiaohongshu…），问一句；
    - **是否视频理解**（看画面）：默认否；要则配多模态模型 + `video_understanding=True, video_interval=6, grid_size=[3,3]`；

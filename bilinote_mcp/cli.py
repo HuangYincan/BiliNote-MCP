@@ -13,7 +13,8 @@ import json
 import os
 import sys
 
-from bilinote_mcp.config import get_app_config, set_app_config, setup_environment
+from bilinote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
+from bilinote_mcp.provider_probe import probe_chat, probe_models
 
 # 轻量 CLI 不该被 import 时的裸 print 污染 stdout，先进程级重定向到 stderr
 _orig_print = builtins.print
@@ -30,6 +31,7 @@ DATA_DIR = setup_environment()
 
 # 只导入 provider 相关（不触发 app.downloaders / app.transcriber 的 import 噪音）
 from app.db.init_db import init_db
+from app.db.model_dao import get_model_by_provider_and_name, insert_model
 from app.db.provider_dao import seed_default_providers
 from app.services.provider import ProviderService
 from app.services.transcriber_config_manager import TranscriberConfigManager
@@ -204,7 +206,7 @@ def _wizard(inq) -> None:
         choice = inq.select(
             message="选择要配置的项目",
             choices=[
-                {"name": "① LLM 供应商（填 key / 改 base_url / 新增）", "value": "llm"},
+                {"name": "① LLM 供应商（填 key / 检测连接 / 默认模型）", "value": "llm"},
                 {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
                 {"name": "③ 其他（平台 Cookie / 默认笔记位置）", "value": "other"},
                 {"name": "✔ 完成 / 退出", "value": "exit"},
@@ -228,18 +230,21 @@ def _wizard_llm(inq) -> None:
         while True:
             _show_header("① LLM 供应商")
             provs = ProviderService.get_all_providers_safe()
-            choices = [
-                {
-                    "name": f"{p['id']:<10} {p['name']:<12} key={'✓已填' if p['api_key'] else '空'}  {p['base_url']}",
-                    "value": ("edit", p["id"]),
-                }
-                for p in provs
-            ]
+            choices = []
+            for p in provs:
+                default_model = get_app_config().get(f"default_model:{p['id']}")
+                suffix = f"  ⤷默认={default_model}" if default_model else ""
+                choices.append(
+                    {
+                        "name": f"{p['id']:<10} {p['name']:<12} key={'✓已填' if p['api_key'] else '空'}  {p['base_url']}{suffix}",
+                        "value": ("open", p["id"]),
+                    }
+                )
             choices += [
                 {"name": "＋ 新增供应商（中转站/自建）", "value": ("add", None)},
                 {"name": "← 返回主菜单", "value": ("back", None)},
             ]
-            pick = inq.select(message="选择要编辑的供应商（← 返回）", choices=choices, keybindings=_KB).execute()
+            pick = inq.select(message="选择要管理的供应商（← 返回）", choices=choices, keybindings=_KB).execute()
             if pick[0] == "back":
                 return
             if pick[0] == "add":
@@ -253,17 +258,124 @@ def _wizard_llm(inq) -> None:
                 else:
                     print(f"{_YELLOW}⚠ 信息不完整，未新增{_RESET}", file=sys.stdout)
                 continue
-            pid = pick[1]
-            _show_header(f"编辑供应商 {pid}")
-            key = inq.secret(message="新的 API key（直接回车保持不变）", keybindings=_KB).execute()
-            if key:
-                ProviderService.update_provider(pid, {"api_key": key})
-                print(f"{_GREEN}✓ 已更新 {pid} 的 key{_RESET}", file=sys.stdout)
-            base_url = inq.text(message="base_url（直接回车保持不变）", keybindings=_KB).execute()
-            if base_url:
-                ProviderService.update_provider(pid, {"base_url": base_url})
+            _wizard_llm_provider(inq, pick[1])
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
+
+
+def _wizard_llm_provider(inq, pid) -> None:
+    """单个供应商的子菜单：编辑 key/base_url / 检测连接→列模型→设默认 / 返回。"""
+    try:
+        while True:
+            _show_header(f"管理供应商 {pid}")
+            cur = get_app_config().get(f"default_model:{pid}")
+            pick = inq.select(
+                message=f"管理 {pid}（默认模型：{cur or '未设置'}）",
+                choices=[
+                    {"name": "✏ 编辑 API key / base_url", "value": "edit"},
+                    {"name": "🔌 检测连接 → 列出模型 → 设默认", "value": "test"},
+                    {"name": "← 返回供应商列表", "value": "back"},
+                ],
+                keybindings=_KB,
+            ).execute()
+            if pick == "back":
+                return
+            if pick == "edit":
+                _edit_provider(inq, pid)
+            else:
+                _test_and_set_default(inq, pid)
+    except KeyboardInterrupt:
+        return  # 左键/Ctrl-C → 返回供应商列表（只退一级）
+
+
+def _edit_provider(inq, pid) -> None:
+    """编辑供应商的 API key / base_url（key 为空=保持不变）。"""
+    _show_header(f"编辑供应商 {pid}")
+    key = inq.secret(message="新的 API key（直接回车保持不变）", keybindings=_KB).execute()
+    if key:
+        ProviderService.update_provider(pid, {"api_key": key})
+        print(f"{_GREEN}✓ 已更新 {pid} 的 key{_RESET}", file=sys.stdout)
+    base_url = inq.text(message="base_url（直接回车保持不变）", keybindings=_KB).execute()
+    if base_url:
+        ProviderService.update_provider(pid, {"base_url": base_url})
+
+
+def _test_and_set_default(inq, pid) -> None:
+    """检测连接 → 列出可用模型 → 选择默认模型。"""
+    _show_header(f"检测连接 {pid}")
+    provider = ProviderService.get_provider_by_id(pid)
+    if not provider:
+        print(f"{_YELLOW}⚠ 供应商 {pid} 不存在{_RESET}", file=sys.stdout)
+        return
+    if not provider.get("api_key"):
+        print(f"{_DIM}（该供应商未填 key；Ollama 可无 key 直测）{_RESET}", file=sys.stdout)
+    r = probe_models(provider.get("api_key"), provider.get("base_url"), name=provider.get("name", ""))
+    if r["ok"]:
+        print(f"{_GREEN}✓ 连接成功：{len(r['models'])} 个模型{_RESET}", file=sys.stdout)
+        for m in sorted(set(r["models"]))[:30]:
+            print(f"  {_DIM}{m}{_RESET}", file=sys.stdout)
+        if len(r["models"]) > 30:
+            print(f"{_DIM}… 共 {len(r['models'])} 个，仅显示前 30{_RESET}", file=sys.stdout)
+        _pick_default_model(inq, pid, r["models"])
+        return
+    # /v1/models 失败 → 提示 + 可选降级 chat 探测
+    print(f"{_YELLOW}✗ 无法从 /v1/models 获取模型列表：{r['error']}{_RESET}", file=sys.stdout)
+    print(f"{_DIM}部分中转站 / 自建网关不实现 /v1/models，可改用「最小对话请求」检测。{_RESET}", file=sys.stdout)
+    try:
+        if inq.confirm(message="改用「最小对话请求」检测？需要输入一个模型名", default=True, keybindings=_KB).execute():
+            model = inq.text(message="模型名（如 deepseek-chat / llama3 / qwen-plus）", keybindings=_KB).execute()
+            if model:
+                c = probe_chat(provider.get("api_key"), provider.get("base_url"), model)
+                if c["ok"]:
+                    print(f"{_GREEN}✓ 连接成功（model={model}）{_RESET}", file=sys.stdout)
+                    _set_default_model(pid, model)
+                else:
+                    print(f"{_YELLOW}✗ chat 检测失败：{c['error']}{_RESET}", file=sys.stdout)
+    except KeyboardInterrupt:
+        return  # 左键/Ctrl-C → 回子菜单
+
+
+def _pick_default_model(inq, pid, models) -> None:
+    """让用户从探测到的模型里选一个默认（或手动输入 / 清除 / 取消）。"""
+    cur = get_app_config().get(f"default_model:{pid}")
+    unique = sorted(set(models))[:30]
+    choices = []
+    if cur and cur not in unique:
+        choices.append({"name": f"● {cur}（当前默认）", "value": cur})
+    choices += [{"name": f"● {m}", "value": m} for m in unique]
+    choices += [
+        {"name": "⌨ 手动输入模型名", "value": "__manual__"},
+        {"name": "不设置（清除默认）", "value": "__clear__"},
+        {"name": "← 取消", "value": "__cancel__"},
+    ]
+    pick = inq.select(message=f"选择 {pid} 的默认模型（← 取消）", choices=choices, keybindings=_KB).execute()
+    if pick == "__cancel__":
+        return
+    if pick == "__clear__":
+        _set_default_model(pid, None)
+        return
+    if pick == "__manual__":
+        model = inq.text(message="模型名", keybindings=_KB).execute()
+        if model:
+            _set_default_model(pid, model)
+        return
+    _set_default_model(pid, pick)
+
+
+def _set_default_model(pid: str, model_name: "str | None") -> None:
+    """设置 / 清除某供应商的默认模型。
+
+    持久化到 app_config.json（default_model:{pid}），同时 dedup 写回 models 表
+    （供 list_models 本地回退用）；清除时只删配置、不删 DB 行。
+    """
+    if model_name:
+        set_app_config(f"default_model:{pid}", model_name)
+        if not get_model_by_provider_and_name(pid, model_name):
+            insert_model(provider_id=pid, model_name=model_name)
+        print(f"{_GREEN}✓ 已设置 {pid} 的默认模型：{model_name}{_RESET}", file=sys.stdout)
+    else:
+        remove_app_config(f"default_model:{pid}")
+        print(f"{_YELLOW}✓ 已清除 {pid} 的默认模型{_RESET}", file=sys.stdout)
 
 
 def _wizard_transcriber(inq) -> None:
@@ -427,6 +539,44 @@ def _wizard_other(inq) -> None:
         return  # 左键/Ctrl-C → 返回主菜单
 
 
+def _fallback_test_and_default(pid: str) -> None:
+    """纯文本兜底：检测连接 + 选默认模型（镜像 _test_and_set_default）。"""
+    provider = ProviderService.get_provider_by_id(pid)
+    if not provider:
+        print(f"   ⚠ 供应商 {pid} 不存在", file=sys.stdout)
+        return
+    print(f"   检测连接 {pid}…", file=sys.stdout)
+    r = probe_models(provider.get("api_key"), provider.get("base_url"), name=provider.get("name", ""))
+    if not r["ok"]:
+        print(f"   ✗ 无法获取模型列表：{r['error']}", file=sys.stdout)
+        m = _ask("   改用 chat 检测？输入模型名（空=跳过）")
+        if m:
+            c = probe_chat(provider.get("api_key"), provider.get("base_url"), m)
+            if c["ok"]:
+                print(f"   ✓ 连接成功（model={m}）", file=sys.stdout)
+                _set_default_model(pid, m)
+            else:
+                print(f"   ✗ chat 检测失败：{c['error']}", file=sys.stdout)
+        return
+    print(f"   ✓ 连接成功：{len(r['models'])} 个模型", file=sys.stdout)
+    models = sorted(set(r["models"]))[:10]
+    for i, m in enumerate(models, 1):
+        print(f"   {i}) {m}", file=sys.stdout)
+    if len(r["models"]) > 10:
+        print(f"   … 共 {len(r['models'])} 个，仅显示前 10", file=sys.stdout)
+    sel = _ask("   选默认模型 [1-%d]，0=手动输入，空=不设置" % len(models), default="")
+    if not sel:
+        _set_default_model(pid, None)
+    elif sel == "0":
+        m = _ask("   手动输入模型名")
+        if m:
+            _set_default_model(pid, m)
+    elif sel.isdigit() and 1 <= int(sel) <= len(models):
+        _set_default_model(pid, models[int(sel) - 1])
+    else:
+        print("   ⚠ 无效选择，未设置", file=sys.stdout)
+
+
 def _setup_cli_fallback() -> None:
     """无 InquirerPy 时的纯文本兜底向导（同功能，输入编号选择）。"""
     print("=== BiliNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
@@ -435,14 +585,20 @@ def _setup_cli_fallback() -> None:
     if provs:
         print("\n① LLM 供应商（当前）：", file=sys.stdout)
         for i, p in enumerate(provs, 1):
-            print(f"   {i}) {p['id']}  key={'已填' if p['api_key'] else '空'}  {p['base_url']}", file=sys.stdout)
-        sel = _ask("   选择要编辑的 [1-%d]，0 跳过" % len(provs), default="0")
+            dm = get_app_config().get(f"default_model:{p['id']}")
+            suffix = f"  默认={dm}" if dm else ""
+            print(f"   {i}) {p['id']}  key={'已填' if p['api_key'] else '空'}  {p['base_url']}{suffix}", file=sys.stdout)
+        sel = _ask("   选择要管理的 [1-%d]，0 跳过" % len(provs), default="0")
         if sel.isdigit() and 1 <= int(sel) <= len(provs):
             pid = provs[int(sel) - 1]["id"]
             key = _ask_secret(f"   新的 API key（{pid}，留空不变）")
             if key:
                 ProviderService.update_provider(pid, {"api_key": key})
                 print(f"   ✓ 已更新 {pid} 的 key", file=sys.stdout)
+            base_url = _ask(f"   新的 base_url（{pid}，留空不变）")
+            if base_url:
+                ProviderService.update_provider(pid, {"base_url": base_url})
+            _fallback_test_and_default(pid)
     if _ask("   新增中转站/自建供应商？[y/N]", default="N").lower() == "y":
         name = _ask("   供应商名称", default="我的中转站")
         base_url = _ask("   base_url")
@@ -490,6 +646,9 @@ def _providers_cli(argv) -> None:
     p_add.add_argument("--api-key", required=True)
     p_add.add_argument("--base-url", required=True)
     p_add.add_argument("--type", default="custom")
+    p_test = sub.add_parser("test", help="检测连接并列出可用模型（--default 设为默认模型）")
+    p_test.add_argument("provider_id")
+    p_test.add_argument("--default", help="把某个模型设为该供应商的默认模型")
 
     opts = parser.parse_args(argv)
     if opts.cmd == "list":
@@ -499,7 +658,26 @@ def _providers_cli(argv) -> None:
             return
         for p in rows:
             key = f"已填 {p['api_key']}" if p["api_key"] else "空"
-            print(f"{p['id']:10} {p['name']:12} key={key}  base_url={p['base_url']}", file=sys.stdout)
+            dm = get_app_config().get(f"default_model:{p['id']}")
+            suffix = f"  默认={dm}" if dm else ""
+            print(f"{p['id']:10} {p['name']:12} key={key}  base_url={p['base_url']}{suffix}", file=sys.stdout)
+    elif opts.cmd == "test":
+        provider = ProviderService.get_provider_by_id(opts.provider_id)
+        if not provider:
+            print(f"供应商不存在: {opts.provider_id}", file=sys.stderr)
+            sys.exit(1)
+        r = probe_models(provider.get("api_key"), provider.get("base_url"), name=provider.get("name", ""))
+        if not r["ok"]:
+            print(f"✗ 连接失败：{r['error']}", file=sys.stdout)
+            sys.exit(1)
+        print(f"✓ 连接成功：{len(r['models'])} 个模型", file=sys.stdout)
+        for m in sorted(set(r["models"]))[:30]:
+            print(f"  {m}", file=sys.stdout)
+        if len(r["models"]) > 30:
+            print(f"  … 共 {len(r['models'])} 个，仅显示前 30", file=sys.stdout)
+        if opts.default:
+            _set_default_model(opts.provider_id, opts.default)
+        sys.exit(0)
     elif opts.cmd == "set":
         data = {}
         if opts.api_key is not None:

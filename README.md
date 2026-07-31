@@ -109,7 +109,7 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 
 **方向键选择 + 高亮**、**左键返回上一级**、每步自动清屏不留历史；**不是一次性程序**，随时重跑即可改配置：
 
-- **① LLM 供应商**：选一个填/改 key、改 base_url，或新增中转站；
+- **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
 - **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
 - **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）。
 
@@ -120,6 +120,8 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 bilinote-mcp providers list                                    # 查看（key 掩码）
 bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 给内置供应商填 key
 bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
+bilinote-mcp providers test deepseek                            # 检测连接 + 列出可用模型
+bilinote-mcp providers test deepseek --default deepseek-chat    # 检测并设为默认模型
 
 # 语音转写引擎
 bilinote-mcp transcriber list                                  # 查看当前引擎与就绪状态
@@ -162,6 +164,7 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 |----------|-----------|
 | 看供应商 / 给内置填 key | `list_providers`（key 掩码） / **CLI** `providers set` |
 | 看 / 加模型 | `list_models(provider_id)` / `add_model(provider_id, "deepseek-chat")` |
+| 检测连接 / 设默认模型 | `bilinote-mcp providers test <id> [--default MODEL]`（非交互；向导内走「管理 → 检测连接」） |
 | 本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
 | 云端转写 | `set_transcriber("groq")`（groq 的 key 用 CLI 填） |
 | B 站需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
