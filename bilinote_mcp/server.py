@@ -111,7 +111,7 @@ def _absolutize_images(markdown: Optional[str]) -> str:
 
 def _run_note_task(task_id: str, **params) -> None:
     """在后台线程执行 NoteGenerator.generate，并落盘最终结果。"""
-    _write_status(task_id, "INITIALIZING", message="正在加载转写引擎/模型…")
+    _write_status(task_id, "INITIALIZING", message="正在准备…")
     try:
         generator = NoteGenerator()
         result = generator.generate(task_id=task_id, **params)

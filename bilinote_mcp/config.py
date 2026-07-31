@@ -52,6 +52,11 @@ def setup_environment() -> Path:
     # 转写引擎默认值（transcriber_config_manager 无配置文件时 fallback）
     os.environ.setdefault("TRANSCRIBER_TYPE", "fast-whisper")
     os.environ.setdefault("WHISPER_MODEL_SIZE", "tiny")
+    # whisper/mlx 模型下载的请求超时：网络不可达时让每次下载快速失败，
+    # 避免 huggingface_hub 重试 + WhisperTranscriber 自愈重下长时间阻塞任务
+    # （真正需要音频转写的任务会以 FAILED + 明确错误结束，而非卡在 INITIALIZING）。
+    os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "10")
+    os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "10")
     # 配置目录（transcriber_config / cookie 落到这里，避免依赖 CWD）
     os.environ.setdefault("BILINOTE_CONFIG_DIR", str(config_dir))
     # 模型目录：已安装包时一定要指到用户数据目录（否则会写进 site-packages）。
