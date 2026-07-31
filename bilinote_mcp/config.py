@@ -63,3 +63,27 @@ def setup_environment() -> Path:
     os.environ.setdefault("BACKEND_PORT", "8483")
 
     return data_dir
+
+
+def get_app_config() -> dict:
+    """读取持久化应用配置（如默认笔记位置），存于 BILINOTE_CONFIG_DIR/app_config.json。"""
+    import json
+
+    path = Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "app_config.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def set_app_config(key: str, value) -> None:
+    """持久化应用配置。"""
+    import json
+
+    path = Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "app_config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cfg = get_app_config()
+    cfg[key] = value
+    path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")

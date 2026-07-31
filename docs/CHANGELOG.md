@@ -23,6 +23,7 @@
 - cli.py 本地 whisper 尺寸补上 `large-v3-turbo`（后端早已支持）；README / docs/04 明确转写引擎列表（含 mlx-whisper 仅 macOS）、设备说明（whisper 自动检测 CUDA、CLI download 用 cpu 只因下载不推理）。
 - README / docs/04「前提」补：本地 whisper 下载、GPU 加速（NVIDIA 用 `--with torch` 走 CUDA、macOS 用 `mlx-whisper`）。
 - **setup 交互升级**：改用 InquirerPy —— 方向键选择 + 高亮、主菜单随时切换、可返回上一步，做成**随时可反复进入修改的配置入口**（① LLM 供应商 ② 转写引擎 ③ 其他/Cookie/笔记位置）。新增 `_download_whisper` 助手（transcriber download 也复用）；无 InquirerPy 时回退纯文本向导；非 TTY 优雅退出。
+- **setup UX 打磨**：① 每步清屏 + 彩色/加粗标题（不留历史信息）；② **左键 = 返回上一级**（所有 select/text/secret 绑定 cancel）；③ 平台 Cookie 改为下拉选择（bilibili/youtube/douyin/kuaishou/其他 + 返回）；④ **默认笔记位置持久化**（`config/app_config.json`，`generate_note` 读取：notes_dir → app_config → env → 默认）；⑤ 本地模型下载流程更清晰（已下载则跳过、未下载才确认）。
 
 ## 发布后维护（2026-07-31）
 

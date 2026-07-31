@@ -13,7 +13,7 @@ import json
 import os
 import sys
 
-from bilinote_mcp.config import setup_environment
+from bilinote_mcp.config import get_app_config, set_app_config, setup_environment
 
 # 轻量 CLI 不该被 import 时的裸 print 污染 stdout，先进程级重定向到 stderr
 _orig_print = builtins.print
@@ -83,24 +83,44 @@ def _download_whisper(size: str) -> None:
     print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
 
 
+# 交互配色（ANSI）
+_CYAN = "\033[1;36m"
+_YELLOW = "\033[1;33m"
+_GREEN = "\033[1;32m"
+_DIM = "\033[2m"
+_RESET = "\033[0m"
+# 让「← 左键」= 取消（返回上一层）；Ctrl-C 同样触发取消
+_KB = {"left": [{"action": "cancel"}]}
+
+
+def _show_header(section: str = "") -> None:
+    """清屏并重绘标题，避免历史信息堆积。"""
+    print("\033[2J\033[H", end="", file=sys.stdout)
+    print(f"{_CYAN}⚙  BiliNote-MCP 配置向导{_RESET}  {_DIM}↑↓ 选择 · 回车确认 · ← 返回 · Ctrl-C 退出{_RESET}", file=sys.stdout)
+    if section:
+        print(f"{_YELLOW}▶ {section}{_RESET}", file=sys.stdout)
+    print("", file=sys.stdout)
+
+
 def _setup_cli() -> None:
-    """交互式配置向导：主菜单 + 各配置区，方向键选择、可随时返回，可反复运行修改配置。"""
+    """交互式配置向导：主菜单 + 各配置区，方向键选择、左键返回、随时可反复进入修改。"""
     try:
         from InquirerPy import inquirer
     except ImportError:
         print("（未安装 InquirerPy，使用纯文本提示；`uv sync` 后可启用方向键/高亮选择）", file=sys.stderr)
         _setup_cli_fallback()
         return
-    print("⚙  BiliNote-MCP 配置向导（↑↓ 选择 / 回车确认 / 随时 Ctrl-C 退出，可反复进入修改）", file=sys.stdout)
+    _show_header()
     print("    API key 为隐藏输入，不经过 agent 对话。", file=sys.stdout)
     try:
         _wizard(inquirer)
     except (EOFError, KeyboardInterrupt):
-        print("（已取消）", file=sys.stdout)
+        print(f"{_GREEN}✔ 已退出{_RESET}", file=sys.stdout)
 
 
 def _wizard(inq) -> None:
     while True:
+        _show_header()
         choice = inq.select(
             message="选择要配置的项目",
             choices=[
@@ -110,6 +130,7 @@ def _wizard(inq) -> None:
                 {"name": "✔ 完成 / 退出", "value": "exit"},
             ],
             default="llm",
+            keybindings=_KB,
         ).execute()
         if choice == "llm":
             _wizard_llm(inq)
@@ -118,112 +139,151 @@ def _wizard(inq) -> None:
         elif choice == "other":
             _wizard_other(inq)
         else:
-            print("✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`", file=sys.stdout)
+            print(f"{_GREEN}✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`{_RESET}", file=sys.stdout)
             return
 
 
 def _wizard_llm(inq) -> None:
-    while True:
-        provs = ProviderService.get_all_providers_safe()
-        choices = [
-            {
-                "name": f"{p['id']:<10} {p['name']:<12} key={'✓已填' if p['api_key'] else '空'}  {p['base_url']}",
-                "value": ("edit", p["id"]),
-            }
-            for p in provs
-        ]
-        choices += [
-            {"name": "＋ 新增供应商（中转站/自建）", "value": ("add", None)},
-            {"name": "← 返回主菜单", "value": ("back", None)},
-        ]
-        pick = inq.select(message="LLM 供应商（选择一个编辑；key 掩码显示）", choices=choices).execute()
-        if pick[0] == "back":
-            return
-        if pick[0] == "add":
-            name = inq.text(message="供应商名称").execute()
-            base_url = inq.text(message="base_url（如 https://relay.example.com/v1）").execute()
-            key = inq.secret(message="API key（隐藏输入）").execute()
-            if name and base_url and key:
-                new_id = ProviderService.add_provider(name=name, api_key=key, base_url=base_url, logo="custom", type_="custom")
-                print(f"✓ 已新增 {name} → id={new_id}", file=sys.stdout)
-            else:
-                print("⚠ 信息不完整，未新增", file=sys.stdout)
-            continue
-        pid = pick[1]
-        key = inq.secret(message=f"新的 API key（{pid}，直接回车保持不变）").execute()
-        if key:
-            ProviderService.update_provider(pid, {"api_key": key})
-            print(f"✓ 已更新 {pid} 的 key", file=sys.stdout)
-        base_url = inq.text(message=f"base_url（{pid}，直接回车保持不变）").execute()
-        if base_url:
-            ProviderService.update_provider(pid, {"base_url": base_url})
+    try:
+        while True:
+            _show_header("① LLM 供应商")
+            provs = ProviderService.get_all_providers_safe()
+            choices = [
+                {
+                    "name": f"{p['id']:<10} {p['name']:<12} key={'✓已填' if p['api_key'] else '空'}  {p['base_url']}",
+                    "value": ("edit", p["id"]),
+                }
+                for p in provs
+            ]
+            choices += [
+                {"name": "＋ 新增供应商（中转站/自建）", "value": ("add", None)},
+                {"name": "← 返回主菜单", "value": ("back", None)},
+            ]
+            pick = inq.select(message="选择要编辑的供应商（← 返回）", choices=choices, keybindings=_KB).execute()
+            if pick[0] == "back":
+                return
+            if pick[0] == "add":
+                _show_header("新增供应商")
+                name = inq.text(message="供应商名称", keybindings=_KB).execute()
+                base_url = inq.text(message="base_url（如 https://relay.example.com/v1）", keybindings=_KB).execute()
+                key = inq.secret(message="API key（隐藏输入）", keybindings=_KB).execute()
+                if name and base_url and key:
+                    new_id = ProviderService.add_provider(name=name, api_key=key, base_url=base_url, logo="custom", type_="custom")
+                    print(f"{_GREEN}✓ 已新增 {name} → id={new_id}{_RESET}", file=sys.stdout)
+                else:
+                    print(f"{_YELLOW}⚠ 信息不完整，未新增{_RESET}", file=sys.stdout)
+                continue
+            pid = pick[1]
+            _show_header(f"编辑供应商 {pid}")
+            key = inq.secret(message="新的 API key（直接回车保持不变）", keybindings=_KB).execute()
+            if key:
+                ProviderService.update_provider(pid, {"api_key": key})
+                print(f"{_GREEN}✓ 已更新 {pid} 的 key{_RESET}", file=sys.stdout)
+            base_url = inq.text(message="base_url（直接回车保持不变）", keybindings=_KB).execute()
+            if base_url:
+                ProviderService.update_provider(pid, {"base_url": base_url})
+    except KeyboardInterrupt:
+        return  # 左键/Ctrl-C → 返回主菜单
 
 
 def _wizard_transcriber(inq) -> None:
-    while True:
-        cfg = TranscriberConfigManager().get_config()
-        cur = f"{cfg['transcriber_type']} / {cfg['whisper_model_size']}"
-        pick = inq.select(
-            message=f"语音转写引擎（当前：{cur}）",
-            choices=[
-                {"name": f"fast-whisper（本地）   当前尺寸 {cfg['whisper_model_size']}", "value": "fast-whisper"},
-                {"name": "groq（云端，需 key）", "value": "groq"},
-                {"name": "bcut（云端）", "value": "bcut"},
-                {"name": "kuaishou（云端）", "value": "kuaishou"},
-                {"name": "mlx-whisper（仅 macOS，GPU）", "value": "mlx-whisper"},
-                {"name": "← 返回主菜单", "value": "back"},
-            ],
-            default=cfg["transcriber_type"] if cfg["transcriber_type"] in ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper") else "fast-whisper",
-        ).execute()
-        if pick == "back":
-            return
-        if pick in ("fast-whisper", "mlx-whisper"):
-            sizes = [{"name": s, "value": s} for s in _WHISPER_SIZES]
-            sizes.append({"name": "← 取消", "value": "back"})
-            size = inq.select(message=f"{pick} 模型尺寸", choices=sizes, default=cfg["whisper_model_size"]).execute()
-            if size == "back":
-                continue
-            TranscriberConfigManager().update_config(pick, size)
-            print(f"✓ 已切换 {pick} / {size}", file=sys.stdout)
-            if pick == "fast-whisper":
-                if inq.confirm(message=f"现在下载 whisper-{size}？（约几十MB~数GB）", default=False).execute():
-                    try:
-                        _download_whisper(size)
-                    except Exception as e:
-                        print(f"⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）", file=sys.stdout)
-        else:
-            TranscriberConfigManager().update_config(pick)
-            print(f"✓ 已切换 {pick}", file=sys.stdout)
+    try:
+        while True:
+            cfg = TranscriberConfigManager().get_config()
+            cur = f"{cfg['transcriber_type']} / {cfg['whisper_model_size']}"
+            _show_header("② 语音转写引擎")
+            pick = inq.select(
+                message=f"当前：{cur}",
+                choices=[
+                    {"name": f"fast-whisper（本地）   当前尺寸 {cfg['whisper_model_size']}", "value": "fast-whisper"},
+                    {"name": "groq（云端，需 key）", "value": "groq"},
+                    {"name": "bcut（云端）", "value": "bcut"},
+                    {"name": "kuaishou（云端）", "value": "kuaishou"},
+                    {"name": "mlx-whisper（仅 macOS，GPU）", "value": "mlx-whisper"},
+                    {"name": "← 返回主菜单", "value": "back"},
+                ],
+                default=cfg["transcriber_type"] if cfg["transcriber_type"] in ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper") else "fast-whisper",
+                keybindings=_KB,
+            ).execute()
+            if pick == "back":
+                return
+            if pick in ("fast-whisper", "mlx-whisper"):
+                _show_header(f"选择 {pick} 模型尺寸")
+                sizes = [{"name": s, "value": s} for s in _WHISPER_SIZES]
+                sizes.append({"name": "← 取消", "value": "back"})
+                size = inq.select(message="模型尺寸", choices=sizes, default=cfg["whisper_model_size"], keybindings=_KB).execute()
+                if size == "back":
+                    continue
+                TranscriberConfigManager().update_config(pick, size)
+                print(f"{_GREEN}✓ 已切换 {pick} / {size}{_RESET}", file=sys.stdout)
+                if pick == "fast-whisper":
+                    from app.utils.model_status import check_whisper_model_exists
+
+                    if check_whisper_model_exists(size, "whisper"):
+                        print(f"{_DIM}（whisper-{size} 已下载，无需再下）{_RESET}", file=sys.stdout)
+                    elif inq.confirm(message=f"本地模型 whisper-{size} 尚未下载，现在下载？（约几十MB~数GB）", default=False, keybindings=_KB).execute():
+                        try:
+                            _download_whisper(size)
+                        except Exception as e:
+                            print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
+            else:
+                TranscriberConfigManager().update_config(pick)
+                print(f"{_GREEN}✓ 已切换 {pick}{_RESET}", file=sys.stdout)
+    except KeyboardInterrupt:
+        return  # 左键/Ctrl-C → 返回主菜单
 
 
 def _wizard_other(inq) -> None:
-    while True:
-        from app.services.cookie_manager import CookieConfigManager
+    try:
+        while True:
+            from app.services.cookie_manager import CookieConfigManager
 
-        notes_dir = os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
-        pick = inq.select(
-            message="其他设置",
-            choices=[
-                {"name": "平台 Cookie（B 站等需登录内容）", "value": "cookie"},
-                {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
-                {"name": "← 返回主菜单", "value": "back"},
-            ],
-        ).execute()
-        if pick == "back":
-            return
-        if pick == "cookie":
-            platform = inq.text(message="平台（bilibili / youtube / douyin / kuaishou）").execute()
-            cookie = inq.secret(message="Cookie 值").execute()
-            if platform and cookie:
-                CookieConfigManager().set(platform, cookie)
-                print(f"✓ 已保存 {platform} 的 Cookie", file=sys.stdout)
-            else:
-                print("⚠ 未保存（平台或 Cookie 为空）", file=sys.stdout)
-        elif pick == "notes":
-            new_dir = inq.text(message="默认笔记目录（直接回车=用默认）。改后需在 shell 配置持久化 BILINOTE_NOTES_DIR").execute()
-            if new_dir:
-                os.environ["BILINOTE_NOTES_DIR"] = new_dir
-                print(f"✓ 本次已设 BILINOTE_NOTES_DIR={new_dir}", file=sys.stdout)
+            notes_dir = get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
+            _show_header("③ 其他设置")
+            pick = inq.select(
+                message="选择要配置的项（← 返回）",
+                choices=[
+                    {"name": "平台 Cookie（B 站等需登录内容）", "value": "cookie"},
+                    {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
+                    {"name": "← 返回主菜单", "value": "back"},
+                ],
+                keybindings=_KB,
+            ).execute()
+            if pick == "back":
+                return
+            if pick == "cookie":
+                _show_header("平台 Cookie")
+                platform = inq.select(
+                    message="平台",
+                    choices=[
+                        {"name": "bilibili", "value": "bilibili"},
+                        {"name": "youtube", "value": "youtube"},
+                        {"name": "douyin", "value": "douyin"},
+                        {"name": "kuaishou", "value": "kuaishou"},
+                        {"name": "其他（手动输入）", "value": "other"},
+                        {"name": "← 返回", "value": "back"},
+                    ],
+                    keybindings=_KB,
+                ).execute()
+                if platform == "back":
+                    continue
+                if platform == "other":
+                    platform = inq.text(message="平台名", keybindings=_KB).execute()
+                cookie = inq.secret(message=f"{platform} 的 Cookie 值（留空取消）", keybindings=_KB).execute()
+                if platform and cookie:
+                    CookieConfigManager().set(platform, cookie)
+                    print(f"{_GREEN}✓ 已保存 {platform} 的 Cookie{_RESET}", file=sys.stdout)
+                else:
+                    print(f"{_YELLOW}⚠ 未保存（平台或 Cookie 为空）{_RESET}", file=sys.stdout)
+            elif pick == "notes":
+                cur = get_app_config().get("notes_dir") or "（默认）"
+                _show_header("默认笔记位置")
+                new_dir = inq.text(message=f"当前：{cur}。输入新目录（留空=保持默认）", keybindings=_KB).execute()
+                if new_dir:
+                    set_app_config("notes_dir", new_dir)
+                    print(f"{_GREEN}✓ 已保存默认笔记位置：{new_dir}{_RESET}", file=sys.stdout)
+    except KeyboardInterrupt:
+        return  # 左键/Ctrl-C → 返回主菜单
 
 
 def _setup_cli_fallback() -> None:

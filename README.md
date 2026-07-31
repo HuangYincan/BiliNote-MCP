@@ -99,11 +99,11 @@ cd BiliNote-MCP && ./install.sh
 bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup
 ```
 
-**方向键选择 + 高亮**，主菜单里随时切换配置项、可返回上一步；**不是一次性程序**，随时重跑即可改配置：
+**方向键选择 + 高亮**、**左键返回上一级**、每步自动清屏不留历史；**不是一次性程序**，随时重跑即可改配置：
 
 - **① LLM 供应商**：选一个填/改 key、改 base_url，或新增中转站；
-- **② 语音转写引擎**：选引擎 + 模型尺寸，可选立即下载 whisper 模型；
-- **③ 其他**：平台 Cookie、默认笔记位置。
+- **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
+- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）。
 
 ### 手动 CLI（key 不进对话）
 

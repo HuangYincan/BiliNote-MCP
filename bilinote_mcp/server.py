@@ -21,7 +21,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from bilinote_mcp.config import setup_environment
+from bilinote_mcp.config import get_app_config, setup_environment
 
 DATA_DIR = setup_environment()
 
@@ -239,7 +239,7 @@ def generate_note(
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],
-        notes_dir=notes_dir or os.environ.get("BILINOTE_NOTES_DIR") or None,
+        notes_dir=notes_dir or get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or None,
     )
     _pool.submit(_run_note_task, task_id, **params)
     logger.info(f"已提交任务 task_id={task_id} platform={platform} model={model_name}")
