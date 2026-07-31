@@ -17,6 +17,7 @@
   - SKILL.md：工作流新增「确认参数」步骤 —— 用户没指定时询问 LLM 模型/转写/风格/是否视频理解/是否插图片+保存位置。
   - README / docs/04：新增「图片插入（便携笔记）」章节。
   - 已单测 `_insert_screenshots` Assets 布局（相对引用 + 图片落盘）。
+- **`bilinote-mcp transcriber` CLI**：终端直接管理语音转写引擎 —— `list` / `set <engine> [--size]` / `download <size>`（本地 whisper 模型下载）；README / docs/04 补命令行。
 
 ## 发布后维护（2026-07-31）
 

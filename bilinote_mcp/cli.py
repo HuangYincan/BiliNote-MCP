@@ -195,13 +195,69 @@ def _providers_cli(argv) -> None:
         print(f"已新增 {opts.name} → id={new_id}", file=sys.stdout)
 
 
+_TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
+
+
+def _transcriber_cli(argv) -> None:
+    """`bilinote-mcp transcriber ...`：在终端管理语音转写引擎。"""
+    parser = argparse.ArgumentParser(
+        prog="bilinote-mcp transcriber",
+        description="在终端管理语音转写引擎（fast-whisper 本地 / groq / bcut / kuaishou / mlx-whisper）",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_list = sub.add_parser("list", help="查看当前转写引擎与就绪状态")
+    p_set = sub.add_parser("set", help="切换转写引擎")
+    p_set.add_argument("engine", choices=_TRANSCRIBER_ENGINES)
+    p_set.add_argument("--size", help="whisper 模型尺寸（tiny/base/small/medium/large-v3）")
+    p_dl = sub.add_parser("download", help="下载本地 whisper 模型（fast-whisper）")
+    p_dl.add_argument("size", choices=_WHISPER_SIZES)
+
+    opts = parser.parse_args(argv)
+    mgr = TranscriberConfigManager()
+    if opts.cmd == "list":
+        cfg = mgr.get_config()
+        ready = mgr.is_model_ready()
+        print(f"当前引擎: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
+        print(f"就绪: {'✓ ready' if ready['ready'] else '✗ ' + ready['reason']}", file=sys.stdout)
+        print(f"可选引擎: {', '.join(_TRANSCRIBER_ENGINES)}", file=sys.stdout)
+        print(f"whisper 尺寸: {', '.join(_WHISPER_SIZES)}", file=sys.stdout)
+    elif opts.cmd == "set":
+        if opts.engine in ("fast-whisper", "mlx-whisper") and not opts.size:
+            opts.size = "small"
+        cfg = mgr.update_config(opts.engine, opts.size)
+        print(f"已切换: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
+        if opts.engine == "fast-whisper":
+            print(f"（本地模型还需下载：bilinote-mcp transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
+    elif opts.cmd == "download":
+        size = opts.size
+        print(f"正在下载 whisper-{size}（首次约几十MB~数GB，请稍候）…", file=sys.stdout)
+        try:
+            from app.transcriber.whisper_models import resolve_whisper_model
+            from faster_whisper import WhisperModel
+            from app.utils.path_helper import get_model_dir
+
+            WhisperModel(
+                model_size_or_path=resolve_whisper_model(size),
+                device="cpu", compute_type="int8",
+                download_root=get_model_dir("whisper"),
+            )
+            print(f"✓ whisper-{size} 下载完成", file=sys.stdout)
+        except Exception as e:
+            print(f"✗ 下载失败: {e}（可稍后重试或换小尺寸）", file=sys.stderr)
+            sys.exit(1)
+
+
 def main() -> None:
-    """入口：providers / setup 走轻量 CLI，其余进入 MCP server（stdio）。"""
+    """入口：providers / setup / transcriber 走轻量 CLI，其余进入 MCP server（stdio）。"""
     if len(sys.argv) > 1 and sys.argv[1] == "providers":
         _providers_cli(sys.argv[2:])
         return
     if len(sys.argv) > 1 and sys.argv[1] == "setup":
         _setup_cli()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "transcriber":
+        _transcriber_cli(sys.argv[2:])
         return
     # MCP 模式：懒加载完整流水线（server.py）
     from bilinote_mcp.server import main as _server_main

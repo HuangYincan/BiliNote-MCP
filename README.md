@@ -100,9 +100,16 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+... bilinote-mcp se
 ### 手动 CLI（key 不进对话）
 
 ```bash
+# LLM 供应商
 bilinote-mcp providers list                                    # 查看（key 掩码）
 bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 给内置供应商填 key
 bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
+
+# 语音转写引擎
+bilinote-mcp transcriber list                                  # 查看当前引擎与就绪状态
+bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whisper（tiny/base/small/medium/large-v3）
+bilinote-mcp transcriber set groq                               # 切云端
+bilinote-mcp transcriber download small                         # 下载本地 whisper 模型
 ```
 
 ### 没有 LLM API key？
