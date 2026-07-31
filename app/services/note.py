@@ -409,6 +409,10 @@ class NoteGenerator:
         task_id = audio_cache_file.stem.split("_")[0]
         self._update_status(task_id, status_phase)
 
+        # 每个任务独立的下载子目录：同一视频并发任务不再写同一个 {video_id}.mp4/.mp3，
+        # 下载器/转写器/事件清理都只在自己的 dl_{task_id} 里活动，互不干扰
+        dl_dir = output_path or str(NOTE_OUTPUT_DIR / f"dl_{task_id}")
+
         # 已有缓存，尝试加载
         if audio_cache_file.exists():
             logger.info(f"检测到音频缓存 ({audio_cache_file})，直接读取")
@@ -425,7 +429,7 @@ class NoteGenerator:
                 audio = downloader.download(
                     video_url=video_url,
                     quality=quality,
-                    output_dir=output_path,
+                    output_dir=dl_dir,
                     need_video=False,
                     skip_download=True,
                 )
@@ -449,7 +453,7 @@ class NoteGenerator:
         if need_video:
             try:
                 logger.info("开始下载视频")
-                video_path_str = downloader.download_video(video_url)
+                video_path_str = downloader.download_video(video_url, output_dir=dl_dir)
                 self.video_path = Path(video_path_str)
                 logger.info(f"视频下载完成：{self.video_path}")
 
@@ -475,7 +479,7 @@ class NoteGenerator:
             audio = downloader.download(
                 video_url=video_url,
                 quality=quality,
-                output_dir=output_path,
+                output_dir=dl_dir,
                 need_video=need_video,
             )
             audio_cache_file.write_text(json.dumps(asdict(audio), ensure_ascii=False, indent=2), encoding="utf-8")

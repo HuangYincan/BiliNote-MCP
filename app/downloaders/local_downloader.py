@@ -9,7 +9,10 @@ from app.models.audio_model import AudioDownloadResult
 import os
 import subprocess
 
+from app.utils.logger import get_logger
 from app.utils.video_helper import save_cover_to_static
+
+logger = get_logger(__name__)
 
 
 class LocalDownloader(Downloader, ABC):
@@ -117,17 +120,21 @@ class LocalDownloader(Downloader, ABC):
 
         file_name = os.path.basename(video_url)
         title, _ = os.path.splitext(file_name)
-        print(title, file_name,video_url)
-        file_path=self.convert_to_mp3(video_url)
+        # 尊重 output_dir：本地文件并发任务各写各的 mp3，不再默认写到源视频同目录
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            mp3_out = os.path.join(output_dir, f"{title}.mp3")
+        else:
+            mp3_out = None
+        file_path = self.convert_to_mp3(video_url, mp3_out)
         # 封面提取对纯音频文件（mp3/wav 等）不适用；失败不阻断笔记生成
         cover_url = ""
         try:
             cover_path = self.extract_cover(video_url)
             cover_url = save_cover_to_static(cover_path)
         except Exception as e:
-            print(f"提取封面失败（忽略）: {e}")
+            logger.warning(f"提取封面失败（忽略）: {e}")
 
-        print('file——path',file_path)
         return AudioDownloadResult(
             file_path=file_path,
             title=title,

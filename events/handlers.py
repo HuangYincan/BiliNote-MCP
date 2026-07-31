@@ -1,5 +1,6 @@
 import os
 from app.utils.logger import get_logger
+from app.utils.path_helper import get_data_dir
 logger = get_logger(__name__)
 
 def cleanup_temp_files(data):
@@ -10,6 +11,12 @@ def cleanup_temp_files(data):
         return
 
     dir_path = os.path.dirname(file_path)
+    # 防御：绝不从共享根目录（data/ 等）按 video_id 前缀批量删除——
+    # 并发任务下那会删到别的任务正在用的文件。只在任务自己的子目录里清理。
+    if os.path.abspath(dir_path) == os.path.abspath(get_data_dir()):
+        logger.warning(f"跳过清理：{dir_path} 是共享数据根目录，不在其中按 video_id 删除")
+        return
+
     base_name = os.path.basename(file_path)
     video_id, _ = os.path.splitext(base_name)
 
