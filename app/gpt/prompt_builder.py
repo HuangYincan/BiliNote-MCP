@@ -41,12 +41,15 @@ def generate_base_prompt(title, segment_text, tags, _format=None, style=None, ex
     if extras:
         prompt += f"\n{extras}"
 
-    # 添加观众评论与弹幕（仅供参考，可引用其中观点）
+    # 添加观众评论与弹幕 —— 强制在笔记中输出「观众观点」章节（可见、可总结）
     if comments_danmaku:
         prompt += (
-            "\n\n===== 观众评论与弹幕（仅供参考，可引用其中观点）=====\n"
+            "\n\n===== 观众评论与弹幕 =====\n"
             f"{comments_danmaku}\n"
-            "===== 评论与弹幕结束 ====="
+            "===== 评论与弹幕结束 =====\n"
+            "若上面提供了观众评论与弹幕：你必须在笔记中新增一节「观众观点」，"
+            "总结观众评论和弹幕中反复出现的观点、补充细节、纠错（引用实际内容，不要捏造）；"
+            "若无可总结的，写「（无）」；若未提供该节内容，则不写「观众观点」。"
         )
     return prompt
 

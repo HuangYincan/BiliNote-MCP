@@ -212,6 +212,7 @@ generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
 ```
 
 - Folds danmaku + comment-section viewpoints into the note, so it reflects viewer discussion, not just the audio track;
+- **The note gains an "Audience viewpoints" (观众观点) section** summarizing recurring comment/danmaku opinions, additions and corrections (quoting actual content, no fabrication); writes "（无）" when there's nothing to summarize;
 - `comments_limit` controls how many comments to fetch (default 20);
 - **Needs a Bilibili SESSDATA** (logged-in state): without it the comments won't be available — run `bilinote-mcp login bilibili` to scan a QR code (or `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`);
 - **A fetch failure does not block the task**: if comments/danmaku can't be retrieved, the note is still generated normally and simply skips that part;
@@ -229,7 +230,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - Produces a **portable note**: `note_dir/note.md` + `note_dir/Assets/*.jpg`, with **relative references** `![...](Assets/xxx.jpg)` in the Markdown;
 - `result.note_dir` in the task result points to that directory (the agent tells you where the note and images are);
 - **Save location priority**: `generate_note(..., notes_dir="/your/dir")` → `BILINOTE_NOTES_DIR` env var → default `note_results/{task_id}/`;
-- **When `notes_dir` is set, `note.md` is written there even without screenshots** (good for "generate notes into this folder");
+- **When `notes_dir` is set, each note gets its own folder**: `<notes_dir>/<note-title>/note.md` (title taken from the LLM-generated note's H1, falling back to the video title; conflicts get a short task-id suffix) — written even without screenshots, so multiple notes never overwrite each other;
 - How it works: `screenshot=True` makes the LLM emit `*Screenshot-[mm:ss]` markers, and `format=["screenshot"]` replaces them with images; pairing with video understanding (`video_understanding=True`) gives more natural results.
 
 ## Tool reference

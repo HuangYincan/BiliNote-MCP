@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -60,6 +61,30 @@ logger.setLevel(logging.INFO)
 
 
 from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+
+
+def _extract_note_title(markdown: str) -> Optional[str]:
+    """从生成的 markdown 提取 LLM 起的标题（第一个 H1/# 行），用于文件夹命名。"""
+    for line in (markdown or "").splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip(" #")
+    return None
+
+
+def _note_dir_name(title: Optional[str], task_id: str, base: Path) -> str:
+    """给一篇笔记一个文件夹名：优先 LLM 生成的笔记标题（或视频标题）清洗后；空/冲突时回退 task_id。
+
+    标题清洗：替换路径非法字符 + 截断 60，防路径穿越/超长；目标文件夹已存在（同名冲突）时加 task_id 后缀。
+    """
+    if title:
+        safe = re.sub(r'[\\/:*?"<>|]', "_", str(title)).strip(" .")[:60]
+        if safe:
+            target = base / safe
+            if not target.exists():
+                return safe
+            return f"{safe}-{task_id[:6]}"  # 同名冲突 → 加短 task_id 后缀
+    return task_id
 
 
 class NoteGenerator:
@@ -236,13 +261,19 @@ class NoteGenerator:
             # 4. 截图 & 链接替换
             assets_dir = None
             _note_dir = None
+            # 文件夹名优先用 LLM 生成的笔记标题（markdown 的 H1），更准；回退视频标题
+            folder_title = _extract_note_title(markdown) or (audio_meta.title if audio_meta else None)
             if _format and "screenshot" in _format:
                 # 截图模式：note.md 与 Assets/ 同层、相对引用；目录用户可指定
-                _note_dir = Path(notes_dir or (NOTE_OUTPUT_DIR / task_id))
+                if notes_dir:
+                    # 一篇笔记一个文件夹：<notes_dir>/<标题>/（内含 note.md + Assets/）
+                    _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
+                else:
+                    _note_dir = NOTE_OUTPUT_DIR / task_id
                 assets_dir = _note_dir / "Assets"
             elif notes_dir:
-                # 用户指定了输出目录（即使不插图片），也把笔记写成文件
-                _note_dir = Path(notes_dir)
+                # 用户指定了输出目录（即使不插图片），每篇笔记一个文件夹（以标题命名）
+                _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
             if _format:
                 markdown = self._post_process_markdown(
                     markdown=markdown,
@@ -270,7 +301,12 @@ class NoteGenerator:
             # 6. 完成
             self._update_status(task_id, TaskStatus.SUCCESS)
             logger.info(f"笔记生成成功 (task_id={task_id})")
-            return NoteResult(markdown=markdown, transcript=transcript, audio_meta=audio_meta)
+            return NoteResult(
+                markdown=markdown,
+                transcript=transcript,
+                audio_meta=audio_meta,
+                note_dir=str(_note_dir) if _note_dir is not None else None,
+            )
 
         except TaskCancelledError:
             raise  # 取消要透传给上层（MCP 层写 CANCELLED），不能转成 FAILED

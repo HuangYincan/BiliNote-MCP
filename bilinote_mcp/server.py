@@ -132,8 +132,11 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
             "transcript": asdict(result.transcript) if result.transcript else None,
             "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
         }
-        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录
-        if params.get("notes_dir"):
+        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录（优先 generate() 返回的真实目录）
+        note_dir = getattr(result, "note_dir", None)
+        if note_dir and (Path(note_dir) / "note.md").exists():
+            payload["note_dir"] = str(note_dir)
+        elif params.get("notes_dir"):
             note_dir = Path(params["notes_dir"])
             if (note_dir / "note.md").exists():
                 payload["note_dir"] = str(note_dir)

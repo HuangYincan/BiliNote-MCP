@@ -212,6 +212,7 @@ generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
 ```
 
 - 整合弹幕+评论区观点，让笔记不仅来自音轨，还能反映观众讨论；
+- **笔记会新增一节「观众观点」**：总结弹幕刷屏/评论区反复出现的观点、补充、纠错（引用实际内容，不捏造）；无可总结时写「（无）」；
 - `comments_limit` 控制抓取的评论条数（默认 20）；
 - **需 B 站 SESSDATA**（登录态）：没配则评论拿不到 —— 先 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；
 - **抓取失败不阻断任务**：拿不到评论/弹幕时笔记照常生成，跳过该部分即可；
@@ -229,7 +230,8 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - 产出**便携笔记**：`note_dir/note.md` + `note_dir/Assets/*.jpg`，markdown 里用**相对引用** `![...](Assets/xxx.jpg)`；
 - 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
 - **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
-- **指定了 `notes_dir` 时，即使不插图片也会把 `note.md` 写到该目录**（适合「生成笔记到某文件夹」）；
+- **指定了 `notes_dir` 时，每篇笔记一个文件夹**：`<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；冲突自动加短 task_id 后缀）—— 即使不插图片也会写文件（适合「生成笔记到某文件夹」，且多篇互不覆盖）；
+- 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 - 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 
 ## 工具参考
