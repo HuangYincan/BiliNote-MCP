@@ -190,6 +190,8 @@ def generate_note(
     grid_size: Optional[List[int]] = None,
     notes_dir: Optional[str] = None,
     extras: Optional[str] = None,
+    include_comments: Optional[bool] = None,
+    comments_limit: Optional[int] = None,
 ) -> str:
     """提交一个视频链接/本地文件，异步生成 AI Markdown 笔记。
 
@@ -201,6 +203,7 @@ def generate_note(
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
     - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；
     - extras: 附加到 prompt 末尾的自定义指令（如自定义笔记风格要求）；内置风格用 style，自定义风格用 extras；
+    - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论作为参考注入 prompt（仅 B 站视频生效）；不传时用 setup 默认（默认关 / 20 条）；显式传入始终覆盖；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
     - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
     - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
@@ -238,6 +241,12 @@ def generate_note(
     if video_interval is None:
         video_interval = int(get_app_config().get("video_interval") or 0)
 
+    # 弹幕/评论默认：参数没传（None）时用 setup 配置的默认（默认关 / 20 条）
+    if include_comments is None:
+        include_comments = bool(get_app_config().get("include_comments", False))
+    if comments_limit is None:
+        comments_limit = int(get_app_config().get("comments_limit") or 20)
+
     task_id = uuid.uuid4().hex
     _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
     params = dict(
@@ -251,6 +260,8 @@ def generate_note(
         _format=format or [],
         style=style,
         extras=extras,
+        include_comments=include_comments,
+        comments_limit=comments_limit,
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],
@@ -321,6 +332,40 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
         },
         ensure_ascii=False,
     )
+
+
+@mcp.tool()
+def fetch_comments(video_url: str, limit: int = 20) -> str:
+    """抓取 B 站视频的热门评论（供生成笔记前预览/参考，不生成笔记）。
+
+    返回 {ok, source, bvid, aid, comments: [{user, content, likes, ctime}], error}。
+    可用 fetch_danmaku 看弹幕汇总；generate_note 的 include_comments 可把二者注入笔记 prompt。
+    """
+    try:
+        from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+        result = BilibiliCommentFetcher().fetch_comments(video_url, limit=limit)
+    except Exception as exc:
+        logger.warning(f"fetch_comments 失败: {exc}")
+        result = {"ok": False, "source": "bilibili", "error": str(exc)}
+    return json.dumps(result, ensure_ascii=False)
+
+
+@mcp.tool()
+def fetch_danmaku(video_url: str) -> str:
+    """抓取 B 站视频的弹幕汇总（供生成笔记前预览/参考，不生成笔记）。
+
+    返回 {ok, source, bvid, cid, danmaku_summary, error}。
+    可用 fetch_comments 看热门评论；generate_note 的 include_comments 可把二者注入笔记 prompt。
+    """
+    try:
+        from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+        result = BilibiliCommentFetcher().fetch_danmaku(video_url)
+    except Exception as exc:
+        logger.warning(f"fetch_danmaku 失败: {exc}")
+        result = {"ok": False, "source": "bilibili", "error": str(exc)}
+    return json.dumps(result, ensure_ascii=False)
 
 
 @mcp.tool()
