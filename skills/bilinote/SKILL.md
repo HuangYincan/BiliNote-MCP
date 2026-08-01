@@ -1,96 +1,39 @@
 ---
 name: bilinote
-description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/抖音/快手/本地文件）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。当用户给出视频链接/本地视频并希望得到结构化笔记或总结时使用。
+description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/YouTube/抖音/快手）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。⚠️ 必须先确认参数（LLM 模型/风格/视频理解/弹幕评论/截图）再调用 generate_note。
 ---
 
-# BiliNote-Mcp —— 视频链接 → AI Markdown 笔记
+# BiliNote-Mcp —— 视频 → AI 笔记
 
-把 [BiliNote](https://github.com/JefferyHcool/BiliNote) 的核心能力（下载 → 转写 → LLM 总结）封装成了 MCP 工具。**无需启动任何后端服务** —— 流水线完全在 MCP server 进程内运行。
+## ⚡ 强制规则（违反 = 任务失败，不可跳过）
 
-## 必须用 MCP 工具（不要用 Bash/curl 硬做）
+1. **必须用 MCP 工具**（`generate_note` / `get_task_status` / `list_providers` / `cancel_note` 等），**不要用 Bash/curl 手工调后端**。唯一例外：让用户在独立终端跑 `bilinote-mcp providers set`（填 key）、`bilinote-mcp login bilibili`（B站扫码）—— 这些本就该在终端做。
+2. **必须先确认参数；用户明确指定（或说「你定」）之前，禁止调用 `generate_note`**。必须问：
+   - **LLM 模型**：`list_models(provider_id)` 拿到列表 → 呈现给用户选一个；
+   - **笔记风格**：列出真实 9 种让用户选 —— `minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，或自定义（描述经 `extras` 传入）；
+   - **是否视频理解** + 帧间隔秒数（默认 6，需多模态模型）；
+   - **是否整合弹幕+评论区观点** + 评论条数（默认 20，需 B 站 SESSDATA，没配引导用户 `bilinote-mcp login bilibili`）；
+   - **是否插图片** + 笔记保存位置（`notes_dir`）。
+   - 即使用户在 setup 配了默认，本次也要先问；用户说「你定/用默认」才用默认值。
+3. **任务一次只发一个**：发一个 → `get_task_status` 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再发下一个（server 有进行中任务时会直接拒绝并行提交）。
+4. **生成后必须问是否后续优化**：基于笔记 + 完整字幕精修（从字幕挖更多细节、展开讲透；补齐遗漏、修正不一致、增强结构）。
 
-- 本 Skill 的所有步骤都**调用 `bilinote` MCP 的工具**（`generate_note` / `get_task_status` / `list_providers` / `set_transcriber` 等），**不要**用 Bash / curl 手工调后端、不要手工解析 JSON 文件、不要自己拼 HTTP 请求。
-- 你的工具列表里应该有 `bilinote` 的 MCP 工具。**若看不到**：先告诉用户「重启会话（或 `/reload-plugins`）让 MCP 加载」，并检查 `/mcp`；**不要**在缺工具时用 Bash 硬做。
-- 唯一用 CLI/终端的地方：让用户在**独立终端**跑 `bilinote-mcp providers set`（填 key）、`bilinote-mcp login bilibili`（扫码）—— 这些本来就该在终端做。
+## 工作流
 
-## 前提
+1. **`health_check`** —— ffmpeg/db 就绪；缺失先让用户装 FFmpeg。
+2. **`validate_url(url)`** —— 平台识别；B 站优先用平台字幕（AI 字幕需 SESSDATA）。
+3. **`list_providers`** —— 有 key=已填的供应商；没有则让用户在终端配。
+4. **确认参数**（见「强制规则 2」，问完再继续）。
+5. **`generate_note(video_url, provider_id, model_name=<用户选>, style=<用户选>, ...)`** → `task_id`。
+   - 视频理解：`video_understanding=True, video_interval=<秒>`（需多模态模型）；
+   - 弹幕评论：`include_comments=True, comments_limit=<条>`；
+   - 插图片：`screenshot=True, format=["screenshot"]` + `notes_dir="/用户/给的/路径"`。
+6. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）。
+7. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节可读 `result.transcript`。
+8. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **问是否后续优化**（见强制规则 4，要则读 markdown+transcript 精修，原笔记保留对比）。
 
-1. **MCP server 已注册**（`claude mcp list` 应能看到 `bilinote`，或项目 `.mcp.json` 已配置）。
-2. **FFmpeg 已安装**（`ffmpeg -version`）。缺失时先让用户安装，再调用 `health_check` 确认。
-3. **至少一个 LLM 供应商可用**（内置已预置：`list_providers` 查看；空 key 用 `update_provider` 填；自建用 `add_provider`）。
-   - **安全红线：绝不要让用户在对话里发 API key** —— 对话会发到你的 LLM 上游。让用户在 **Claude Code 之外的独立终端**执行 `bilinote-mcp providers set <id> --api-key '...'`。填好后 `list_providers` 显示 `key=已填`，你直接用它，**不需要也不应该看到明文 key**。
-   - 用户没有 key？**优先用 Ollama**（本地免费、无需 key）：`list_models("ollama")` 有模型就直接 `generate_note(provider_id="ollama", model_name=...)`；
-   - 否则引导用户注册免费额度（Groq/DeepSeek 等）后按上面方式在终端填 key。
-4. 转写引擎二选一：
-   - 本地 `fast-whisper`：需先 `download_transcriber_model("tiny")`（或更大尺寸）下载模型；
-   - 云端 `groq` / `bcut`：`set_transcriber("groq")`（需要对应 API key 配置为 id 为 `groq` 的供应商）。
+## 参考
 
-## 标准工作流（给视频做笔记）
-
-1. **`health_check`** —— 确认 ffmpeg/db 就绪；若 `ffmpeg: missing` 先让用户装 FFmpeg。
-2. **`validate_url(url)`** —— 确认链接受支持、识别平台。不支持就明确告诉用户。B 站视频**优先用平台字幕（含 AI 字幕）跳过语音识别**；AI 字幕需 B 站 SESSDATA cookie —— 没配时任务会走语音识别，告诉用户可 `bilinote-mcp login bilibili` 扫码自动获取（或手动填 SESSDATA），之后就能直接用 AI 字幕。
-3. **`list_providers()`** —— 找一个启用的 LLM 供应商（内置已预置，key 为空）。空 key 让用户用 CLI 填（`bilinote-mcp providers set <id> --api-key '...'`，**agent 不碰 key**）；再 `list_models(provider_id)` / `add_model` 确认模型可用。
-4. **确认参数（用户没明确指定前，必须先问，不得自行默认就提交）**：
-   - **LLM 模型**（必须问）：`list_models(provider_id)` 拿到模型后，**把列表呈现给用户、让用户指定一个**（如「用 `gemini-2.5-flash` 还是 `deepseek-chat`？」）。**用户明确说出模型名（或说「你定」）之前，不要调用 `generate_note`**。
-   - **默认模型**：若用户已通过 `bilinote-mcp setup` 给该供应商配了默认模型（`bilinote-mcp providers list` 显示 `默认=`），且用户说「用默认」—— `generate_note` **不传 `model_name`** 会自动用默认（`default_model:<provider_id>` 优先于 DB 第一条）。
-   - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
-   - **笔记风格**（必须问）：默认 `detailed`（详细）—— **把真实风格列表呈现给用户、让用户指定一个**：`minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，**或自定义**（问用户想要什么风格，把描述通过 `extras` 传入，如 `extras="笔记风格要求：<用户描述>"`）；**没有明确信息前不要自行默认 `detailed`**；
-   - **是否视频理解**（看画面，需多模态模型）：**没有明确信息前必须问** —— 先问是否启用，要则**再问帧间隔秒数**（默认 6，如 3/5/10）；**即使 setup ③ 配了默认，本次也要先问用户**，只有用户说「你定/用默认」才用默认值；`video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`；
-   - **是否整合弹幕、评论区观点**（把 B 站弹幕+评论观点融入笔记）：**没有明确信息前必须问** —— 默认否；要则问**评论条数**（默认 20），`generate_note(..., include_comments=True, comments_limit=<用户给的条数>)`；整合需 **B 站 SESSDATA**（没配引导用户 `bilinote-mcp login bilibili` 扫码，或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；**即使 setup ③ 配了默认，本次也要先问**，只有用户说「你定/用默认」才用默认值；
-   - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
-   - **是否后续优化**（生成后基于完整字幕精修）：**必须问** —— 直接问用户「笔记生成后，要不要我再根据完整字幕/转写做后续优化？」**优化的重点是：从字幕里挖出更多细节、把要点展开讲透，同时补齐遗漏、修正不一致、增强结构**；用户说要才做（回答会留到步骤 9 执行）；
-   - 用户说「你定」才跳过追问、用默认值。
-5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
-   - **⚠ 任务一次只发一个，必须等上一个完成**：`generate_note` 现在**强制串行** —— 已有进行中的任务时 server 会**直接拒绝**（报「已有进行中的任务 … 请先等它完成」）。正确做法：**发一个 → `get_task_status`/`wait_for_note` 轮询到 `SUCCESS`/`FAILED`/`CANCELLED` → 再发下一个**。**绝对不要在同一消息里并行塞多个 `generate_note`**（Claude Code 客户端会挂起、最后一个响应收不到）；多任务请一次一个、确认一个。
-   - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
-   - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
-   - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
-   - 整合评论/弹幕：加 `include_comments=True, comments_limit=<用户给的条数>`（**需 B 站 SESSDATA**；抓取失败不阻断任务，笔记里跳过该部分即可）。
-6. **轮询**：用**轻量 `get_task_status(task_id)` 快照轮询**，直到 `SUCCESS`（长视频可能要几分钟）。**不要用 `wait_for_note`** —— 它是阻塞调用（单次最多等 timeout 秒），在等待期间会让对话看起来「卡住/挂起」，权限确认也出不来。
-7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
-8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
-9. **后续优化 —— 必须处理，不能跳过**：
-   - 若步骤 4 已问且用户说要优化：**呈现笔记后立即执行**；
-   - 若还没问过：**呈现笔记后必须补问**（原话：「要不要我再根据完整字幕/转写对这份笔记做后续优化？」）；
-   - 执行：读 `result.markdown` + `result.transcript`（完整转写），**以字幕/转写为权威源** —— ① **挖细节讲透**：从字幕里挖出笔记没覆盖的细节，把每个要点展开讲透（背景、原因、具体步骤、例子、关键数据与结论）；② **补齐遗漏、修正不一致、增强结构**；产出**优化后的笔记**，原笔记保留对比；
-   - 转写可能很长（2 小时视频完整字幕超出单次上下文）：先如实告知限制，按关键章节/已读部分精修，或请用户指定重点章节；
-   - 优化**不写回** `note_dir`（原始产物）；要落盘先问用户存哪。
-
-## 配置要点
-
-| 场景 | 操作 |
-|------|------|
-| 给内置供应商填 key（DeepSeek/OpenAI/Qwen/Groq…已预置） | `update_provider(provider_id="deepseek", api_key="sk-...")` |
-| 自建/新增供应商 | `add_provider(name, api_key, base_url, type)` |
-| 查看供应商 | `list_providers()`（api_key 已掩码） |
-| 查看/添加模型 | `list_models(provider_id)`；不可用则 `add_model(provider_id, "deepseek-chat")` |
-| 切本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
-| 切云端转写 | `update_provider("groq", api_key=...)` 后 `set_transcriber("groq")` |
-| B站等需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
-| 本地文件 | `generate_note(video_url="/绝对/路径/xxx.mp4", platform="local", ...)` |
-| 视频理解默认（setup ③ 可配） | 用户说「用默认」时 `generate_note` 不传 `video_understanding`/`video_interval` 即自动套用（默认关 / 6s）；显式传入始终覆盖 |
-| 评论/弹幕整合默认（setup ③ 可配） | 用户说「用默认」时 `generate_note` 不传 `include_comments`/`comments_limit` 即自动套用（默认关 / 20条）；显式传入始终覆盖；需 B 站 SESSDATA |
-
-## 并发与多会话
-
-- 每个会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离，**多个会话可并行生成不同视频的笔记**，互不干扰。
-- **⚠ 本会话内任务强制串行**：`generate_note` 在已有进行中任务时会**直接拒绝**（报「已有进行中的任务 …」）—— **必须一次一个**：发一个 → `get_task_status`/`wait_for_note` 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个。**绝对不要在同一消息里并行塞多个 `generate_note`**（Claude Code 客户端会挂起、最后一个响应收不到）。多任务就是「提交 → 等完成 → 提交 → 等完成」。
-- **真正并行**：开多个会话（每会话一个独立 MCP 进程）。
-- **多任务轮询务必用轻量 `get_task_status(task_id)` 快照轮询**（每次拿一次状态，不阻塞）；**不要用 `wait_for_note` 阻塞等** —— 它会卡住当前轮次，让对话看起来「挂起」。要「等完成」，就 get_task_status 轮几次，每次之间正常对话。
-- 提交前把计划告诉用户（如「我会依次提交 p10/p11/p12 三个分集，每个完成后提交下一个」），用户同意再提交。
-- 注意资源：whisper / MLX 转写吃 CPU/内存，太多会话并行会卡顿；所有会话共用同一个数据库，极端并发偶发写冲突。
-
-## 故障排查
-
-| 现象 | 处理 |
-|------|------|
-| `health_check` 显示 `ffmpeg: missing` | 让用户 `brew install ffmpeg`（Linux: `apt install ffmpeg`），装完再跑 |
-| `generate_note` 报「需要 provider_id」 | 先 `list_providers` 看内置供应商；空 key 用 `update_provider` 填，自建用 `add_provider` |
-| 报「供应商还没有可用模型」 | `list_models(provider_id)` 实时拉取，或 `add_model` 手动加模型名 |
-| 转写一直失败、提示模型未下载 | 问用户：`bilinote-mcp transcriber download <size>` 下载，或切云端（`set_transcriber("bcut"/"groq")`）—— 不要静默切换 |
-| 任务卡在 `INITIALIZING` | 首次使用 fast-whisper 正在下载模型，耐心等；模型很大时可改用云端转写 |
-| B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 配置 Cookie 后重试 |
-| 想用 B 站 **AI 字幕**跳过语音识别 | 引导用户跑 **`bilinote-mcp login bilibili`**（终端扫码自动获取并保存 SESSDATA），或手动 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`。AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions，关键是 cookie |
-| 整合评论/弹幕时评论拿不到 | 未配 B 站 SESSDATA —— 引导用户 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）后重试；抓取失败**不阻断**笔记生成 |
-| 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
-| 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
+需要工具参数/配置/故障排查时，用 **Read** 读取同目录 reference/ 下的文件：
+- [`reference/tools.md`](reference/tools.md) —— 工具接口速查 + 配置要点
+- [`reference/troubleshooting.md`](reference/troubleshooting.md) —— 故障排查 + 并发/多会话 + B 站细节

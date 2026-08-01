@@ -5,6 +5,7 @@
 ## 维护（2026-08-01）
 
 - **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
+- **SKILL 重构（核心精简 + reference 文件夹）**：SKILL 过长导致 agent 注意力分散、跳过「必须先确认参数」。`skills/bilinote/SKILL.md` 重写为「⚡ 强制规则（违反=任务失败，含必须先确认参数）+ 紧凑工作流」；工具接口/配置挪到 `reference/tools.md`、故障排查/并发/B站细节挪到 `reference/troubleshooting.md`（agent 按需 Read）。强制「必须先问参数」放到正文最前。
 - **MCP 取消任务 + 强制串行**：
   - 新增 `cancel_note(task_id)` 工具：取消进行中/排队任务（协作式 —— `threading.Event`，任务在各阶段边界 + LLM chunk 循环检查；排队任务可 `Future.cancel()` 释放 worker 槽）。`TaskStatus` 加 `CANCELLED`；`wait_for_note` 终止状态含 `CANCELLED`（不再空转超时）。
   - **`generate_note` 强制串行**：同一会话有进行中任务时**直接拒绝**新提交（并行提交多个 `generate_note` 会让 Claude Code 客户端挂起）—— 必须一次一个：提交 → 等到 SUCCESS/FAILED/CANCELLED → 再提交下一个；真正并行请开多个会话。

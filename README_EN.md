@@ -289,7 +289,7 @@ bilinote-mcp providers list                                     # view (keys mas
 
 ## Skill
 
-The repo ships a Claude Code Skill — `skills/bilinote/SKILL.md` — teaching the agent to go "video → notes" in one sentence.
+The repo ships a Claude Code Skill — `skills/bilinote/SKILL.md` — teaching the agent to go "video → notes" in one sentence. The core Skill is kept lean (mandatory rules + workflow); tool interfaces / config / troubleshooting live in `skills/bilinote/reference/` (read on demand).
 
 Install via the plugin marketplace (installs both the Skill and the MCP server):
 

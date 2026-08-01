@@ -289,7 +289,7 @@ bilinote-mcp providers list                                     # 查看（key �
 
 ## Skill
 
-仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
+仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。核心 SKILL 精简为「强制规则 + 工作流」，工具接口 / 配置 / 故障排查在 `skills/bilinote/reference/` 下（agent 需要时按需 Read）。
 
 通过插件 marketplace 安装（同时装好 Skill 与 MCP server）：
 
