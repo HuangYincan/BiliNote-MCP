@@ -47,6 +47,18 @@ bilinote-mcp setup
 | 3 · uv tool install | MCP only (pinned version, ~1s startup) | Want a stable version |
 | 4 · Clone + install.sh | MCP + Skill + auto setup, pip fallback (no uv) | No uv / want to run from source |
 
+## Real end-to-end usage example
+
+From just "3 Bilibili links + an output directory" and **no parameters at all**, the agent automatically runs the whole flow — **parameter confirmation → parallel multi-video → video-understanding screenshots → danmaku/comments integration → transcript-based refinement** — and produces three portable, refined notes with screenshots and an "观众观点" (audience viewpoints) section:
+
+- [IELTS True Class — first lesson](https://www.bilibili.com/video/BV1c54y187SH/) → [`notes/ielts-true-class/note.md`](examples/note-generation-example/notes/ielts-true-class/note.md)
+- [A forensic doctor who autopsied 4,000 bodies watches movie corpses](https://www.bilibili.com/video/BV1QEgZ6rEGj/) → [`notes/forensic-doctor-reacts/note.md`](examples/note-generation-example/notes/forensic-doctor-reacts/note.md)
+- [Hung-yi Lee | Self-attention & Transformer, explained](https://www.bilibili.com/video/BV1r8nMz4EAj/) → [`notes/transformer-self-attention/note.md`](examples/note-generation-example/notes/transformer-self-attention/note.md)
+
+The full transcript of that run (prerequisites / prompt / parameter-confirmation dialog / output) is in [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md).
+
+> 💡 The sections below, from **Installation** to **Tool reference**, are written as detailed as possible **for an Agent to read** (Claude Code, etc.). You don't need to follow them step by step yourself — just tell the agent "help me install this MCP and make notes for a video", and it will run the commands for you.
+
 ## Installation
 
 ### Prerequisites
@@ -188,11 +200,6 @@ At the start of a task the agent **asks "Full-auto" or "Manual"**:
 3. The agent reads the transcript / uses Read to look at the frames → **writes the Markdown itself** (asks for style, defaults to detailed; adds an "观众观点" (Audience viewpoints) section when comments/danmaku are present) → presents.
 
 If the transcript is very long (e.g. a 2h video), refine section by section or let the user pick a focus. The rest (health_check / validate_url / polling / follow-up optimization) stays the same.
-
-### Real end-to-end usage example
-
-From just "3 Bilibili links + an output directory", a full run auto-generated three refined notes (parameter confirmation → parallel multi-video → video-understanding screenshots → danmaku/comments integration → transcript-based refinement):
-see [`examples/note-generation-example/`](examples/note-generation-example/README.md) (includes the three finished notes and a transcript of the run).
 
 ### Manual tool quick reference (non-sensitive config)
 

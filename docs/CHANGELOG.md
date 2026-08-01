@@ -4,6 +4,7 @@
 
 ## 维护（2026-08-01）
 
+- **README 结构调整**：「真实端到端使用示例」上移到「快速开始（TL;DR）」之后、安装之前（含三份成品笔记的直接链接 + 完整过程记录）；安装章节前新增「以下内容写给 Agent 看，人类可让 Agent 安装」说明；顺手修复「图片插入（便携笔记）」章节一处重复行。README 中英同步。
 - **新增真实端到端使用示例 `examples/note-generation-example/`**：一次「3 个 B 站链接 + 输出目录」的极简 Prompt 自动生成三份精修笔记（参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修），附三份成品笔记（`note.md` 精修版 + `note_original.md` 原版 + `Assets/` 截图）与完整过程记录（`README.md`）。README 中英加「真实端到端使用示例」入口。
 - **SKILL 全自动改为「列出完整参数待确认」**：任务开始问「全自动/手动」后，全自动不再静默套默认，而是**先用 setup 默认解析出本次任务将用的完整参数清单一次性列给用户确认**（生成方式/LLM 模型（或选 AGENT 直接生成 `agent_direct`）/ 风格 `default_style` / 视频理解默认 / 评论默认 / 截图默认 / **生成后是否 AGENT 后续优化**）；用户确认即生成，要改某项再以提问方式改，说「你定」用默认。「AGENT 直接生成」改为在**选 LLM 模型阶段**提供（默认用配置 LLM，可选 AGENT 直接生成，不走配置 LLM）。手动模式不变（逐个问）。SKILL.md / reference/tools.md / README（中英）/ docs/04 同步。
 - **README 开发版「从 main 切到 dev」教程补全**：切 dev 的 MCP 命令前加 `claude mcp remove bilinote`（若先前在 main，先移除插件默认 main MCP 再覆盖 dev，同名 `add @dev` 才生效）。README 中英 / docs/04 同步。

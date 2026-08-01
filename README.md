@@ -47,6 +47,18 @@ bilinote-mcp setup
 | 三 · uv tool install | 仅 MCP（固定版本，启动最快 ~1s） | 要稳定版本 |
 | 四 · 克隆 + install.sh | MCP + Skill + 自动 setup，无 uv 兜底 | 没装 uv / 想跑源码 |
 
+## 真实端到端使用示例
+
+只给「3 个 B 站链接 + 输出目录」、**一个参数都没说明**，agent 就自动跑完 **参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修**，产出三份带截图、含「观众观点」的便携精修笔记：
+
+- [雅思教父刘洪波的雅思真经第一课](https://www.bilibili.com/video/BV1c54y187SH/) → [`notes/ielts-true-class/note.md`](examples/note-generation-example/notes/ielts-true-class/note.md)
+- [和解剖了4000具尸体的法医，一起看了影片中的尸体](https://www.bilibili.com/video/BV1QEgZ6rEGj/) → [`notes/forensic-doctor-reacts/note.md`](examples/note-generation-example/notes/forensic-doctor-reacts/note.md)
+- [李宏毅 | 自注意力机制和Transformer详细解析](https://www.bilibili.com/video/BV1r8nMz4EAj/) → [`notes/transformer-self-attention/note.md`](examples/note-generation-example/notes/transformer-self-attention/note.md)
+
+完整过程记录（前置参数 / Prompt / 参数确认对话 / 输出结果）见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
+
+> 💡 **以下从「安装」到「工具参考」都写得尽量详细，主要是给 Agent 看的**（Claude Code 等）。人类完全不必逐条照做 —— 直接对 agent 说一句「帮我安装这个 MCP 并生成视频笔记」，它就会照着下面的命令一步步执行。
+
 ## 安装
 
 ### 前提条件
@@ -189,11 +201,6 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 
 转写过长（如 2h 视频）时按章节分段精修或让用户指定重点。其余流程（health_check / validate_url / 轮询 / 后续优化）与常规一致。
 
-### 真实端到端使用示例
-
-只给「3 个 B 站链接 + 输出目录」就自动生成三份精修笔记（参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修）：
-见 [`examples/note-generation-example/`](examples/note-generation-example/README.md)（含三份成品笔记 + 完整过程记录）。
-
 ### 手动工具速查（非敏感配置）
 
 | 想做什么 | 用哪个工具 |
@@ -251,7 +258,6 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
 - **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
 - **指定了 `notes_dir` 时，每篇笔记一个文件夹**：`<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；冲突自动加短 task_id 后缀）—— 即使不插图片也会写文件（适合「生成笔记到某文件夹」，且多篇互不覆盖）；
-- 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 - 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 
 ### 进阶：清理与存储（cleanup）
