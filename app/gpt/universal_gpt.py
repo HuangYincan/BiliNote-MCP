@@ -1,9 +1,11 @@
 from app.gpt.base import GPT
 from app.gpt.prompt_builder import generate_base_prompt
 from app.models.gpt_model import GPTSource
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
 import os
 import hashlib
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +15,7 @@ from app.gpt.utils import fix_markdown
 from app.gpt.request_chunker import RequestChunker
 from app.models.transcriber_model import TranscriptSegment
 from datetime import timedelta
-from typing import List
+from typing import List, Optional
 
 
 class UniversalGPT(GPT):
@@ -44,6 +46,8 @@ class UniversalGPT(GPT):
 
     def create_messages(self, segments: List[TranscriptSegment], **kwargs):
 
+        comments_danmaku = kwargs.get('comments_danmaku')
+
         content_text = generate_base_prompt(
             title=kwargs.get('title'),
             segment_text=self._build_segment_text(segments),
@@ -51,6 +55,7 @@ class UniversalGPT(GPT):
             _format=kwargs.get('_format'),
             style=kwargs.get('style'),
             extras=kwargs.get('extras'),
+            comments_danmaku=comments_danmaku,
         )
 
         video_img_urls = kwargs.get('video_img_urls', [])
@@ -110,6 +115,7 @@ class UniversalGPT(GPT):
             "style": source.style,
             "extras": source.extras,
             "video_img_urls": source.video_img_urls or [],
+            "comments_danmaku": source.comments_danmaku or "",
             "segments": [
                 {
                     "start": getattr(seg, "start", None),
@@ -266,7 +272,7 @@ class UniversalGPT(GPT):
 
         return current_partials[0]
 
-    def summarize(self, source: GPTSource) -> str:
+    def summarize(self, source: GPTSource, cancel_event: Optional[threading.Event] = None) -> str:
         self.screenshot = source.screenshot
         self.link = source.link
         source.segment = self.ensure_segments_type(source.segment)
@@ -278,6 +284,9 @@ class UniversalGPT(GPT):
 
         chunker = RequestChunker(message_builder, self.max_request_bytes, self._estimate_messages_bytes)
 
+        # 评论/弹幕只在第一个 chunk 携带一次；传入 chunker 仅用于准确估算首 chunk 体积
+        comments_danmaku = getattr(source, "comments_danmaku", None)
+
         try:
             chunks = chunker.chunk(
                 source.segment,
@@ -286,7 +295,8 @@ class UniversalGPT(GPT):
                 tags=source.tags,
                 _format=source._format,
                 style=source.style,
-                extras=source.extras
+                extras=source.extras,
+                comments_danmaku=comments_danmaku,
             )
         except ValueError:
             chunks = chunker.chunk(
@@ -296,7 +306,8 @@ class UniversalGPT(GPT):
                 tags=source.tags,
                 _format=source._format,
                 style=source.style,
-                extras=source.extras
+                extras=source.extras,
+                comments_danmaku=comments_danmaku,
             )
 
         partials = []
@@ -308,7 +319,11 @@ class UniversalGPT(GPT):
         if len(partials) > len(chunks):
             partials = []
 
-        for chunk in chunks[len(partials):]:
+        for offset, chunk in enumerate(chunks[len(partials):]):
+            _check_cancel(cancel_event)  # 每 chunk 前检查取消（LLM 循环内灵敏取消）
+            # 评论/弹幕只出现在第一个 chunk（尚未生成任何 partial 时），
+            # 其余 chunk 传 None，避免大数据在多个 chunk 重复而爆 token
+            chunk_comments = comments_danmaku if (len(partials) == 0 and offset == 0) else None
             messages = self.create_messages(
                 chunk.segments,
                 title=source.title,
@@ -316,7 +331,8 @@ class UniversalGPT(GPT):
                 video_img_urls=chunk.image_urls,
                 _format=source._format,
                 style=source.style,
-                extras=source.extras
+                extras=source.extras,
+                comments_danmaku=chunk_comments,
             )
             try:
                 response = self._chat_completion_create(messages)

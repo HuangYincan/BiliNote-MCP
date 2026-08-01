@@ -15,5 +15,6 @@ class GPTSource:
     extras: Optional[str] = None
     _format: Optional[list] = None
     video_img_urls:  Optional[list] = None
+    comments_danmaku: Optional[str] = None
     checkpoint_key: Optional[str] = None
 

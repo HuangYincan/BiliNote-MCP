@@ -47,6 +47,18 @@ bilinote-mcp setup
 | 3 · uv tool install | MCP only (pinned version, ~1s startup) | Want a stable version |
 | 4 · Clone + install.sh | MCP + Skill + auto setup, pip fallback (no uv) | No uv / want to run from source |
 
+## Real end-to-end usage example
+
+From just "3 Bilibili links + an output directory" and **no parameters at all**, the agent automatically runs the whole flow — **parameter confirmation → parallel multi-video → video-understanding screenshots → danmaku/comments integration → transcript-based refinement** — and produces three portable, refined notes with screenshots and an "观众观点" (audience viewpoints) section:
+
+- [IELTS True Class — first lesson](https://www.bilibili.com/video/BV1c54y187SH/) → [`notes/ielts-true-class/note.md`](examples/note-generation-example/notes/ielts-true-class/note.md)
+- [A forensic doctor who autopsied 4,000 bodies watches movie corpses](https://www.bilibili.com/video/BV1QEgZ6rEGj/) → [`notes/forensic-doctor-reacts/note.md`](examples/note-generation-example/notes/forensic-doctor-reacts/note.md)
+- [Hung-yi Lee | Self-attention & Transformer, explained](https://www.bilibili.com/video/BV1r8nMz4EAj/) → [`notes/transformer-self-attention/note.md`](examples/note-generation-example/notes/transformer-self-attention/note.md)
+
+The full transcript of that run (prerequisites / prompt / parameter-confirmation dialog / output) is in [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md).
+
+> 💡 The sections below, from **Installation** to **Tool reference**, are written as detailed as possible **for an Agent to read** (Claude Code, etc.). You don't need to follow them step by step yourself — just tell the agent "help me install this MCP and make notes for a video", and it will run the commands for you.
+
 ## Installation
 
 ### Prerequisites
@@ -126,7 +138,7 @@ bilinote-mcp setup        # not on PATH: uvx --from git+https://github.com/Huang
 
 - **① LLM providers**: fill/change a key, change base_url, add a relay/gateway; **per-provider connectivity test (verifies key/base_url), list models, and set a default model** (persisted; used automatically when a note is generated without specifying a model);
 - **② Transcription engine**: pick engine + model size, prompts to download if the local model isn't ready;
-- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**).
+- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**), **comments/danmaku integration defaults** (on/off + comment count, **persisted**; needs a Bilibili SESSDATA), **note defaults** (`default_style` detailed / `default_screenshot` off / `agent_direct` off, **persisted**) — full-auto mode applies these (it first lists the full parameter set for your confirmation).
 
 ### Manual CLI (keys never enter the conversation)
 
@@ -170,9 +182,24 @@ Tell the agent "**make notes for this video**" + a link. Standard flow:
 1. `health_check` — confirms FFmpeg / DB are ready;
 2. `list_providers` — confirms a provider with key=set (masked); if none, configure via CLI first;
 3. `generate_note(video_url=..., provider_id=..., model_name=...)` — get `task_id`;
-4. `get_task_status(task_id)` **lightweight snapshot polling** until `SUCCESS` (use it for multi-task parallelism — don't use the blocking `wait_for_note`);
+4. `get_task_status(task_id)` **lightweight snapshot polling** until `SUCCESS`/`FAILED`/`CANCELLED` (**submit one task at a time** — the server rejects new submissions while a task is running; don't batch multiple `generate_note` calls);
 5. Once you have `result.markdown`, **the agent reads the Markdown itself and answers your questions** — no extra RAG needed;
 6. **Ask whether to do a follow-up optimization** based on the note + extracted subtitles (`result.transcript`) — agent-side refinement, no new tool.
+
+### Full-auto / Manual mode + AGENT direct generation
+
+At the start of a task the agent **asks "Full-auto" or "Manual"**:
+
+- **Full-auto**: resolves the **full parameter set** from the setup ③ defaults (generation method / LLM model (or choose AGENT direct generation) / `default_style` (detailed) / video-understanding default / comments default / screenshot default / **whether to do post-generation optimization**) and **lists it once for your confirmation** instead of asking one by one; if you want to change anything it re-asks that item as a question. Once confirmed, not passing style / screenshot / video_understanding / include_comments / agent_direct to `generate_note` applies those defaults. AGENT direct generation is offered at the LLM-model selection step (defaults to the configured LLM).
+- **Manual**: confirms each parameter (LLM model, note style, video understanding, comments/danmaku, screenshots, whether to use AGENT direct generation), then generates.
+
+**AGENT direct generation (`agent_direct`)**: offered at the **LLM-model selection step** — manual mode asks "which model, or AGENT direct generation?"; full-auto mode defaults to the configured LLM and you can switch it in the parameter list. When enabled, the note is **written by the agent itself, not by the configured LLM**:
+
+1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`;
+2. Poll `get_task_status(task_id)` to `SUCCESS` → get the material package (`result.transcript.full_text` full transcript, `result.frames` sampled frames, `result.comments_danmaku` comments/danmaku);
+3. The agent reads the transcript / uses Read to look at the frames → **writes the Markdown itself** (asks for style, defaults to detailed; adds an "观众观点" (Audience viewpoints) section when comments/danmaku are present) → presents.
+
+If the transcript is very long (e.g. a 2h video), refine section by section or let the user pick a focus. The rest (health_check / validate_url / polling / follow-up optimization) stays the same.
 
 ### Manual tool quick reference (non-sensitive config)
 
@@ -200,8 +227,24 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - Samples one frame every `video_interval` seconds, stitches them into a grid, and sends it to the LLM as an inline base64 image;
 - **Requires a multimodal (vision) model**; text-only models like deepseek-chat aren't supported;
 - `grid_size` defaults to `[3, 3]` (`[2, 2]` for `format=["screenshot"]` mode);
-- **Defaults are configurable in setup ③** (default off / 6s): applied automatically when the agent doesn't pass `video_understanding` / `video_interval` (the Skill still asks you first each time; defaults only apply on "your call");
+- **Defaults are configurable in setup ③** (default off / 6s): applied automatically when the agent doesn't pass `video_understanding` / `video_interval` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults (listing the resolved parameter set for confirmation first));
 - To insert **single screenshots** at `*Screenshot-mm:ss` markers, use `format=["screenshot"]` (distinct from the full-frame grid).
+
+### Advanced: comments & danmaku integration
+
+Want the note to also fold in high-frequency **danmaku** and **comment-section** viewpoints from Bilibili (what's trending in the barrage, what the comments are discussing)? Add to `generate_note`:
+
+```text
+generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
+```
+
+- Folds danmaku + comment-section viewpoints into the note, so it reflects viewer discussion, not just the audio track;
+- **The note gains an "Audience viewpoints" (观众观点) section** summarizing recurring comment/danmaku opinions, additions and corrections (quoting actual content, no fabrication); writes "（无）" when there's nothing to summarize;
+- `comments_limit` controls how many comments to fetch (default 20);
+- **Needs a Bilibili SESSDATA** (logged-in state): without it the comments won't be available — run `bilinote-mcp login bilibili` to scan a QR code (or `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`);
+- **A fetch failure does not block the task**: if comments/danmaku can't be retrieved, the note is still generated normally and simply skips that part;
+- To just pull the raw data, use the `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` tools;
+- **Defaults are configurable in setup ③** (default off / 20 comments): applied automatically when the agent doesn't pass `include_comments` / `comments_limit` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults (listing the resolved parameter set for confirmation first)).
 
 ### Advanced: screenshots (portable notes)
 
@@ -214,15 +257,27 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - Produces a **portable note**: `note_dir/note.md` + `note_dir/Assets/*.jpg`, with **relative references** `![...](Assets/xxx.jpg)` in the Markdown;
 - `result.note_dir` in the task result points to that directory (the agent tells you where the note and images are);
 - **Save location priority**: `generate_note(..., notes_dir="/your/dir")` → `BILINOTE_NOTES_DIR` env var → default `note_results/{task_id}/`;
-- **When `notes_dir` is set, `note.md` is written there even without screenshots** (good for "generate notes into this folder");
+- **When `notes_dir` is set, each note gets its own folder**: `<notes_dir>/<note-title>/note.md` (title taken from the LLM-generated note's H1, falling back to the video title; conflicts get a short task-id suffix) — written even without screenshots, so multiple notes never overwrite each other;
 - How it works: `screenshot=True` makes the LLM emit `*Screenshot-[mm:ss]` markers, and `format=["screenshot"]` replaces them with images; pairing with video understanding (`video_understanding=True`) gives more natural results.
+
+### Advanced: cleanup & storage
+
+Task artifacts (downloaded video/audio, transcripts, screenshots, temp files) pile up and eat disk. Agents can clean them up self-service:
+
+- **Inspect first**: `get_task_files(task_id)` — lists the files/dirs a task created on disk (manifest records + `{task_id}*` prefix scan); returns `{task_id, manifest_paths, existing}`.
+- **Per-task cleanup**: `cleanup_note(task_id, include_note=False)` — deletes that task's intermediates (video/audio/transcript/screenshots/`dl_{task_id}/`), **keeping the final note** `note.md` by default; `include_note=True` also deletes the note.
+- **Global cleanup (factory reset)**: `cleanup_all(include_config=False, include_models=False)` — empties `note_results/*`, `static/screenshots/*`, `logs/*`; **keeps** `config/` (LLM keys / cookies / transcriber settings) and `models/` (models are reusable, re-downloading is expensive) by default, and only clears them with `include_config=True` / `include_models=True`. The database (`bili_note.db`) is untouched.
+
+Safety: only manifest-recorded / explicit-prefix paths are deleted, `resolve()`-validated to stay inside the data directory (path-traversal safe); failures are skipped one-by-one and reported.
 
 ## Tool reference
 
 | Tool | Description |
 |------|------|
 | `generate_note` | Submit a video URL, async note generation, returns task_id (supports video understanding + screenshot portable notes + `extras` custom style) |
+| `prepare_note_material` | Download/transcribe/frame-sample/comments only, **does NOT call the configured LLM**; returns a material package (`transcript.full_text` / `frames` / `comments_danmaku`) for AGENT direct generation (see [Full-auto / Manual mode + AGENT direct generation](#full-auto--manual-mode--agent-direct-generation)) |
 | `get_task_status` / `wait_for_note` | Poll task progress / blocking wait for the final Markdown |
+| `cancel_note` | Cancel a running/queued task (cooperative; takes effect at the next phase boundary) |
 | `list_providers` / `add_provider` / `update_provider` | View (masked) / add / update providers (fill keys via CLI) |
 | `list_models` / `add_model` | View (live/DB fallback) / manually add models |
 | `get_transcriber_config` / `set_transcriber` | View / switch transcription engine (local whisper ↔ cloud groq) |
@@ -230,6 +285,8 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `health_check` | FFmpeg / DB / whisper readiness |
 | `validate_url` | Detect which platform a video link belongs to |
 | `set_downloader_cookie` | Set a platform cookie (e.g. Bilibili) |
+| `fetch_comments` / `fetch_danmaku` | Fetch Bilibili video comments / danmaku (`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`; needs SESSDATA) |
+| `get_task_files` / `cleanup_note` / `cleanup_all` | Inspect a task's files / clean one task (keeps the final note by default) / global cleanup (factory reset; keeps config & models by default), see [cleanup & storage](#advanced-cleanup--storage) |
 
 ## Environment variables (optional)
 
@@ -242,7 +299,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_MAX_WORKERS` | **Concurrent note tasks** per MCP session | 3 |
 | `HF_ENDPOINT` | HuggingFace mirror (for slow downloads in China) | Official `https://huggingface.co`; use `https://hf-mirror.com` in China |
 
-**Multi-session parallelism**: each Claude Code session runs its own MCP server process; note tasks are isolated by `task_id` — **multiple sessions can generate notes for different videos in parallel** (up to `BILINOTE_MAX_WORKERS` concurrent tasks per session, executed server-side). **Note**: the Claude Code client handles "multiple parallel MCP tool calls in one message" unreliably (the last response can hang and its task may never submit) — **submit one `generate_note` at a time** (get the task_id, then the next); the tasks still run concurrently server-side. **Poll multiple tasks with lightweight `get_task_status(task_id)` snapshot polling**; `wait_for_note` is blocking and can make the conversation look stuck when used concurrently. Also: whisper/MLX transcription is CPU/memory heavy; too many parallel sessions can saturate the machine; all sessions share one SQLite DB, so extreme concurrency can occasionally cause write conflicts.
+**Serialized per session + parallel across sessions**: each Claude Code session runs its own MCP server process. **Within a session, note tasks are force-serialized** — `generate_note` **rejects** new submissions while a task is running (submit one → poll `get_task_status`/`wait_for_note` to `SUCCESS`/`FAILED`/`CANCELLED` → submit the next); **multiple sessions** can each generate notes for different videos in parallel. **Note**: the Claude Code client handles "multiple parallel MCP tool calls in one message" unreliably (the last response can hang) — so don't batch multiple `generate_note` calls in one message even across tasks. **Poll with lightweight `get_task_status(task_id)` snapshot polling**; `wait_for_note` is blocking and can make the conversation look stuck. Cancel a running task with `cancel_note(task_id)`. Also: whisper/MLX transcription is CPU/memory heavy; too many parallel sessions can saturate the machine; all sessions share one SQLite DB, so extreme concurrency can occasionally cause write conflicts.
 
 ## Updating
 
@@ -272,7 +329,7 @@ bilinote-mcp providers list                                     # view (keys mas
 
 ## Skill
 
-The repo ships a Claude Code Skill — `skills/bilinote/SKILL.md` — teaching the agent to go "video → notes" in one sentence.
+The repo ships a Claude Code Skill — `skills/bilinote/SKILL.md` — teaching the agent to go "video → notes" in one sentence. The core Skill is kept lean (mandatory rules + workflow); tool interfaces / config / troubleshooting live in `skills/bilinote/reference/` (read on demand).
 
 Install via the plugin marketplace (installs both the Skill and the MCP server):
 
@@ -292,6 +349,48 @@ Detailed documentation (Chinese) in [docs/](docs/):
 - [Expected Results](docs/03-预期效果.md)
 - [User Manual](docs/04-使用手册.md)
 - [Changelog](docs/CHANGELOG.md)
+
+## Development build (dev branch)
+
+The `dev` branch has unreleased features (for early access / testing). To use dev early:
+
+**Point the MCP tools at dev** (overrides the plugin's main MCP):
+
+```bash
+claude mcp remove bilinote                                 # if previously on main: remove the plugin's default main MCP first, so the same-named add below takes effect
+claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
+```
+
+**Point the Skill at dev too** (pin the marketplace to the dev branch):
+
+```bash
+claude plugin marketplace add HuangYincan/BiliNote-MCP@dev
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+```
+
+Restart the session (or `/reload-plugins`) for it to take effect.
+
+> **Already pinned to dev and the code changed?** Just run `claude plugin marketplace update bilinote` (pulls the latest dev commit; the `ref: dev` is preserved), then `disable` + `install` — no need to re-run `add @dev`. Only re-run `add ...@dev` if the marketplace was switched back to main.
+
+**Switch back to main (stable)**:
+
+```bash
+claude mcp remove bilinote                                   # MCP reverts to the plugin default (main)
+claude plugin marketplace add HuangYincan/BiliNote-MCP       # marketplace back to main
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+# /reload-plugins
+```
+
+**CLI on dev** (if the `bilinote-mcp` on PATH is the pinned main build): `uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp setup`
+
+> **Note**:
+> - dev and main **share the same data directory** `~/.local/share/bilinote-mcp/`: your LLM keys / SESSDATA / transcriber config carry over automatically — **no need to reconfigure**; but they share the same SQLite, so don't run tasks from both at once.
+> - Pointing the marketplace at dev **replaces** your production marketplace (not coexisting) — remember to switch back to main after testing.
+> - `git+...@dev` is the uv/uvx branch-ref syntax; the default install (no ref) pulls **main** (stable).
+> - A dev-pinned marketplace only changes the **Skill**; the MCP tools need the manual `@dev` override (the marketplace.json `uvx` URL has no ref and still pulls main).
+> - dev-branch features are unreleased — for early access / testing only.
 
 ## Related
 

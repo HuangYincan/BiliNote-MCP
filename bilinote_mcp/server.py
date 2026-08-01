@@ -14,15 +14,15 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from bilinote_mcp.config import get_app_config, setup_environment
-from bilinote_mcp.provider_probe import probe_models
 
 DATA_DIR = setup_environment()
 
@@ -41,6 +41,20 @@ def _print_to_stderr(*args, **kwargs):
 
 _builtins.print = _print_to_stderr
 
+# stdio MCP：把 stderr 重定向到日志文件，避免后台任务的大量输出把 stderr 管道塞满、
+# 阻塞事件循环（logging 持锁跨线程阻塞 → 「第二个工具调用挂起」）。协议只用 stdin/stdout。
+try:
+    _stderr_log = open(DATA_DIR / "logs" / "mcp_stderr.log", "a", encoding="utf-8", buffering=1)
+    os.dup2(_stderr_log.fileno(), 2)   # OS 层：子进程（yt-dlp/ffmpeg）的 stderr 也进文件
+    sys.stderr = _stderr_log            # Python 层：logging / vendored print 进文件
+except Exception:
+    pass  # 重定向失败不致命，保持原样
+
+# app.* 相关导入必须在 setup_environment() 之后 —— 否则 BILINOTE_DATA_DIR/CONFIG_DIR 未设置，
+# logger/配置会用 CWD 相对路径建 config/logs（在笔记目录里出现多余文件夹）。
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+from bilinote_mcp.provider_probe import probe_models
+
 # vendored 核心流水线
 from app.db.engine import get_engine
 from app.db.init_db import init_db
@@ -56,6 +70,7 @@ from app.transcriber import model_download_state as dl_state
 from app.utils.logger import get_logger
 from app.utils.model_status import check_whisper_model_exists, is_downloading
 from app.utils.path_helper import get_model_dir
+from app.utils.task_manifest import cleanup_all_files, cleanup_task_files, list_task_files, record_task_paths
 
 from mcp.server.fastmcp import FastMCP
 
@@ -81,6 +96,11 @@ mcp = FastMCP("bilinote")
 # ---------- 后台任务 ----------
 
 _pool = ThreadPoolExecutor(max_workers=int(os.environ.get("BILINOTE_MAX_WORKERS", "3")))
+
+# 任务注册表：task_id -> (Future, cancel_event)，供 cancel_note 使用（thread-safe）
+_tasks_lock = threading.Lock()
+_task_futures: Dict[str, Future] = {}
+_task_events: Dict[str, threading.Event] = {}
 
 
 def _write_status(task_id: str, status, message: Optional[str] = None) -> None:
@@ -109,22 +129,40 @@ def _absolutize_images(markdown: Optional[str]) -> str:
     return re.sub(r"\]\(/?(static/screenshots/[^)]+)\)", _repl, markdown)
 
 
-def _run_note_task(task_id: str, **params) -> None:
+def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None, **params) -> None:
     """在后台线程执行 NoteGenerator.generate，并落盘最终结果。"""
-    _write_status(task_id, "INITIALIZING", message="正在准备…")
     try:
+        _check_cancel(cancel_event)  # 排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING
+        _write_status(task_id, "INITIALIZING", message="正在准备…")
         generator = NoteGenerator()
-        result = generator.generate(task_id=task_id, **params)
+        result = generator.generate(task_id=task_id, cancel_event=cancel_event, **params)
         if result is None:
             # generate() 内部已写 FAILED 状态
             return
-        payload = {
-            "markdown": result.markdown,
-            "transcript": asdict(result.transcript) if result.transcript else None,
-            "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
-        }
-        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录
-        if params.get("notes_dir"):
+        material = getattr(result, "material", None)
+        if material:
+            # material_only 模式：不产 markdown，payload 写素材包各字段
+            # （markdown 为空字符串，get_task_status 的 absolutize 分支自动跳过）
+            payload = {
+                "kind": "material",
+                "title": material.get("title"),
+                "transcript": material.get("transcript"),
+                "frames": material.get("frames") or [],
+                "comments_danmaku": material.get("comments_danmaku"),
+                "video_path": material.get("video_path"),
+                "audio_path": material.get("audio_path"),
+            }
+        else:
+            payload = {
+                "markdown": result.markdown,
+                "transcript": asdict(result.transcript) if result.transcript else None,
+                "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
+            }
+        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录（优先 generate() 返回的真实目录）
+        note_dir = getattr(result, "note_dir", None)
+        if note_dir and (Path(note_dir) / "note.md").exists():
+            payload["note_dir"] = str(note_dir)
+        elif params.get("notes_dir"):
             note_dir = Path(params["notes_dir"])
             if (note_dir / "note.md").exists():
                 payload["note_dir"] = str(note_dir)
@@ -136,10 +174,23 @@ def _run_note_task(task_id: str, **params) -> None:
             json.dumps(payload, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
+        # 记录结果/状态 JSON 与下载目录到 manifest（尽力而为，失败不阻断）
+        record_task_paths(task_id, [
+            NOTE_OUTPUT_DIR / f"{task_id}.json",
+            NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+            NOTE_OUTPUT_DIR / f"dl_{task_id}",
+        ])
         logger.info(f"笔记生成成功 task_id={task_id}")
+    except TaskCancelledError:
+        logger.info(f"任务已取消 task_id={task_id}")
+        _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
     except Exception as e:
         logger.error(f"任务异常 task_id={task_id}: {e}", exc_info=True)
         _write_status(task_id, TaskStatus.FAILED, message=str(e))
+    finally:
+        with _tasks_lock:
+            _task_futures.pop(task_id, None)
+            _task_events.pop(task_id, None)
 
 
 def _detect_platform(url: str) -> str:
@@ -183,13 +234,15 @@ def generate_note(
     model_name: Optional[str] = None,
     format: Optional[List[str]] = None,
     style: Optional[str] = None,
-    screenshot: bool = False,
+    screenshot: Optional[bool] = None,
     link: bool = False,
     video_understanding: Optional[bool] = None,
     video_interval: Optional[int] = None,
     grid_size: Optional[List[int]] = None,
     notes_dir: Optional[str] = None,
     extras: Optional[str] = None,
+    include_comments: Optional[bool] = None,
+    comments_limit: Optional[int] = None,
 ) -> str:
     """提交一个视频链接/本地文件，异步生成 AI Markdown 笔记。
 
@@ -199,14 +252,17 @@ def generate_note(
     - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增）；
     - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
-    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；
+    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；不传时用 setup ③ 配置的默认（默认 detailed）；显式传入始终覆盖；
     - extras: 附加到 prompt 末尾的自定义指令（如自定义笔记风格要求）；内置风格用 style，自定义风格用 extras；
+    - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论作为参考注入 prompt（仅 B 站视频生效）；不传时用 setup 默认（默认关 / 20 条）；显式传入始终覆盖；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
-    - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
+    - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；不传时用 setup ③ 配置的默认（默认关）；显式传入始终覆盖；
     - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
 
     返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果；
     SUCCESS 时 result.note_dir 指向便携笔记目录。
+
+    只需素材（转写/帧/评论，不调 LLM 总结）供自行写笔记时，用 prepare_note_material。
     """
     if not provider_id:
         raise ValueError("需要 provider_id（先调用 list_providers 查看，或 add_provider 新增 LLM 供应商）")
@@ -238,6 +294,29 @@ def generate_note(
     if video_interval is None:
         video_interval = int(get_app_config().get("video_interval") or 0)
 
+    # 弹幕/评论默认：参数没传（None）时用 setup 配置的默认（默认关 / 20 条）
+    if include_comments is None:
+        include_comments = bool(get_app_config().get("include_comments", False))
+    if comments_limit is None:
+        comments_limit = int(get_app_config().get("comments_limit") or 20)
+
+    # 风格/截图默认：参数没传（None）时用 setup ③ 配置的默认（默认 detailed / 关）
+    if style is None:
+        style = get_app_config().get("default_style") or "detailed"
+    if screenshot is None:
+        screenshot = bool(get_app_config().get("default_screenshot", False))
+
+    # 并发上限：最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）—— subagent 并行提交多视频时
+    # 按 pool 容量限制，超出则拒绝（避免无界排队）。stderr 管道死锁已修复，并行提交不再挂起。
+    with _tasks_lock:
+        active = [tid for tid, f in _task_futures.items() if not f.done()]
+    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    if len(active) >= _max_workers:
+        raise ValueError(
+            f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
+            f"（或 cancel_note 取消）再提交。多视频建议每个视频起一个 subagent 并行处理。"
+        )
+
     task_id = uuid.uuid4().hex
     _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
     params = dict(
@@ -251,15 +330,97 @@ def generate_note(
         _format=format or [],
         style=style,
         extras=extras,
+        include_comments=include_comments,
+        comments_limit=comments_limit,
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],
         notes_dir=notes_dir or get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or None,
     )
-    _pool.submit(_run_note_task, task_id, **params)
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_note_task, task_id, cancel_event, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
     logger.info(f"已提交任务 task_id={task_id} platform={platform} model={model_name}")
     return json.dumps(
         {"task_id": task_id, "status": "PENDING", "platform": platform, "model_name": model_name},
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def prepare_note_material(
+    video_url: str,
+    platform: Optional[str] = None,
+    video_understanding: Optional[bool] = None,
+    video_interval: Optional[int] = None,
+    grid_size: Optional[List[int]] = None,
+    include_comments: Optional[bool] = None,
+    comments_limit: Optional[int] = None,
+) -> str:
+    """提交一个视频链接/本地文件，异步产出「素材包」：转写全文+分段、可选视频帧（file:// 图片）、
+    可选 B 站弹幕/评论、音视频本地路径。不调用 LLM 总结，供 AGENT（Claude Code）读取素材自行写笔记。
+
+    - video_url: 必填，B 站/YouTube/抖音/快手链接或本地文件路径；
+    - platform: 可省略，自动识别；
+    - video_understanding / video_interval / grid_size: 是否抽帧 + 截帧间隔（秒）+ 网格大小
+      （如 [3,3]）；默认关（不抽帧）。开启后 result.frames 是持久化帧图片的 file:// 绝对路径；
+    - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论（仅 B 站视频生效；默认关 / 20 条）。
+
+    不需要配置 LLM 供应商/模型。返回 {task_id, status: PENDING, kind: material}。
+    之后用 get_task_status / wait_for_note 查询；SUCCESS 时 result 含
+    {kind: material, title, transcript, frames, comments_danmaku, video_path, audio_path}。
+    需要 AI 生成结构化 Markdown 笔记请用 generate_note。
+    """
+    if platform is None:
+        platform = _detect_platform(video_url)
+    if platform == "local" and not Path(video_url).expanduser().exists():
+        raise ValueError(f"本地文件不存在: {video_url}")
+
+    # 视频理解（抽帧）默认：参数没传（None）时用 setup ③ 配置的默认（默认关 / 0→6s）；
+    # 显式传 False/0/具体秒数仍是显式值，覆盖默认
+    if video_understanding is None:
+        video_understanding = bool(get_app_config().get("video_understanding", False))
+    if video_interval is None:
+        video_interval = int(get_app_config().get("video_interval") or 0)
+
+    # 弹幕/评论默认：参数没传（None）时用 setup 配置的默认（默认关 / 20 条）
+    if include_comments is None:
+        include_comments = bool(get_app_config().get("include_comments", False))
+    if comments_limit is None:
+        comments_limit = int(get_app_config().get("comments_limit") or 20)
+
+    # 并发上限：与 generate_note 一致，最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）
+    with _tasks_lock:
+        active = [tid for tid, f in _task_futures.items() if not f.done()]
+    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    if len(active) >= _max_workers:
+        raise ValueError(
+            f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
+            f"（或 cancel_note 取消）再提交。"
+        )
+
+    task_id = uuid.uuid4().hex
+    _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
+    params = dict(
+        video_url=video_url,
+        platform=platform,
+        material_only=True,
+        include_comments=include_comments,
+        comments_limit=comments_limit,
+        video_understanding=video_understanding,
+        video_interval=video_interval,
+        grid_size=grid_size or [],
+    )
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_note_task, task_id, cancel_event, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
+    logger.info(f"已提交素材任务 task_id={task_id} platform={platform}")
+    return json.dumps(
+        {"task_id": task_id, "status": "PENDING", "kind": "material", "platform": platform},
         ensure_ascii=False,
     )
 
@@ -309,7 +470,7 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
     deadline = time.time() + max(1, timeout)
     while time.time() < deadline:
         resp = json.loads(get_task_status(task_id))
-        if resp["status"] in ("SUCCESS", "FAILED"):
+        if resp["status"] in ("SUCCESS", "FAILED", "CANCELLED"):
             return json.dumps(resp, ensure_ascii=False)
         time.sleep(max(1, poll_interval))
     return json.dumps(
@@ -321,6 +482,99 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
         },
         ensure_ascii=False,
     )
+
+
+@mcp.tool()
+def cancel_note(task_id: str) -> str:
+    """取消一个进行中/排队的笔记生成任务（协作式：在下一阶段边界生效，LLM 总结时每 chunk 检查）。
+
+    返回 {ok, task_id, status, message?}。
+    """
+    with _tasks_lock:
+        future = _task_futures.get(task_id)
+        event = _task_events.get(task_id)
+    if event is None:
+        return json.dumps(
+            {"ok": False, "task_id": task_id, "status": "NOT_FOUND", "message": "任务不存在或已结束"},
+            ensure_ascii=False,
+        )
+    # 排队中：future.cancel() 可释放 worker 槽；运行中：靠 event 协作式停止（下一阶段边界）
+    if future is not None and not future.done():
+        future.cancel()
+    event.set()
+    _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
+    logger.info(f"已取消任务 task_id={task_id}")
+    return json.dumps({"ok": True, "task_id": task_id, "status": "CANCELLED"}, ensure_ascii=False)
+
+
+@mcp.tool()
+def get_task_files(task_id: str) -> str:
+    """列出某任务在磁盘上生成的相关文件/目录（manifest 记录 + {task_id}* 前缀扫描）。
+
+    返回 {task_id, manifest_paths, existing}，existing 是真实存在的文件/目录列表。
+    清理前先用它查看该任务占了哪些存储。
+    """
+    return json.dumps(list_task_files(task_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def cleanup_note(task_id: str, include_note: bool = False) -> str:
+    """清理某个任务生成的中间产物（下载的视频/音频、转写、截图、临时文件、dl 目录等）。
+
+    - include_note=False（默认）：保留最终笔记（note.md / note_dir / 便携笔记目录）；
+    - include_note=True：连最终笔记一起删（含 manifest）。
+
+    只删除 manifest 记录 / note_results/{task_id}* / dl_{task_id} 前缀的文件，
+    且 resolve 校验在数据目录内（防路径穿越）。返回 {deleted, missing, errors, note_kept}。
+    """
+    return json.dumps(cleanup_task_files(task_id, include_note=include_note), ensure_ascii=False)
+
+
+@mcp.tool()
+def cleanup_all(include_config: bool = False, include_models: bool = False) -> str:
+    """全局清理（类似恢复出厂）：清空 note_results / static/screenshots / logs 的所有任务产物。
+
+    - include_config=False（默认）：保留 config/（LLM key / cookie / 转写设置）；
+      include_config=True 时连 config/ 一起清；
+    - include_models=False（默认）：保留 models/（已下载模型可复用，重下成本高）；
+      include_models=True 时连 models/ 一起清。
+    数据库记录（bili_note.db）不动。返回各目录清理统计 + 保留项。
+    """
+    return json.dumps(cleanup_all_files(include_config=include_config, include_models=include_models), ensure_ascii=False)
+
+
+@mcp.tool()
+def fetch_comments(video_url: str, limit: int = 20) -> str:
+    """抓取 B 站视频的热门评论（供生成笔记前预览/参考，不生成笔记）。
+
+    返回 {ok, source, bvid, aid, comments: [{user, content, likes, ctime}], error}。
+    可用 fetch_danmaku 看弹幕汇总；generate_note 的 include_comments 可把二者注入笔记 prompt。
+    """
+    try:
+        from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+        result = BilibiliCommentFetcher().fetch_comments(video_url, limit=limit)
+    except Exception as exc:
+        logger.warning(f"fetch_comments 失败: {exc}")
+        result = {"ok": False, "source": "bilibili", "error": str(exc)}
+    return json.dumps(result, ensure_ascii=False)
+
+
+@mcp.tool()
+def fetch_danmaku(video_url: str) -> str:
+    """抓取 B 站视频的弹幕汇总（供生成笔记前预览/参考，不生成笔记）。
+
+    返回 {ok, source, bvid, cid, danmaku_summary, error}。
+    可用 fetch_comments 看热门评论；generate_note 的 include_comments 可把二者注入笔记 prompt。
+    """
+    try:
+        from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+        result = BilibiliCommentFetcher().fetch_danmaku(video_url)
+    except Exception as exc:
+        logger.warning(f"fetch_danmaku 失败: {exc}")
+        result = {"ok": False, "source": "bilibili", "error": str(exc)}
+    return json.dumps(result, ensure_ascii=False)
 
 
 @mcp.tool()

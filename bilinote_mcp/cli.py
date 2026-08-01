@@ -208,7 +208,7 @@ def _wizard(inq) -> None:
             choices=[
                 {"name": "① LLM 供应商（填 key / 检测连接 / 默认模型）", "value": "llm"},
                 {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
-                {"name": "③ 其他（平台 Cookie / 默认笔记位置 / 视频理解默认）", "value": "other"},
+                {"name": "③ 其他（平台 Cookie / 默认笔记位置 / 视频理解默认 / 评论·弹幕整合默认 / 笔记默认）", "value": "other"},
                 {"name": "✔ 完成 / 退出", "value": "exit"},
             ],
             default="llm",
@@ -491,6 +491,11 @@ def _wizard_other(inq) -> None:
             notes_dir = get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
             vu_on = bool(get_app_config().get("video_understanding", False))
             vu_int = int(get_app_config().get("video_interval") or 6)
+            cm_on = bool(get_app_config().get("include_comments", False))
+            cm_lim = int(get_app_config().get("comments_limit") or 20)
+            st_style = get_app_config().get("default_style") or "detailed"
+            ss_on = bool(get_app_config().get("default_screenshot", False))
+            ad_on = bool(get_app_config().get("agent_direct", False))
             _show_header("③ 其他设置")
             pick = inq.select(
                 message="选择要配置的项（← 返回）",
@@ -499,6 +504,8 @@ def _wizard_other(inq) -> None:
                     {"name": "平台 Cookie（手动填，B 站等需登录内容）", "value": "cookie"},
                     {"name": f"默认笔记位置（图片模式）：{notes_dir}", "value": "notes"},
                     {"name": f"视频理解默认（{'开' if vu_on else '关'} / {vu_int}s，需多模态模型）", "value": "video"},
+                    {"name": f"评论/弹幕整合默认（{'开' if cm_on else '关'} / {cm_lim}条，需 SESSDATA）", "value": "comments"},
+                    {"name": f"笔记默认（风格 {st_style} / 截图 {'开' if ss_on else '关'} / AGENT直接写 {'开' if ad_on else '关'}）", "value": "note-default"},
                     {"name": "← 返回主菜单", "value": "back"},
                 ],
                 keybindings=_KB,
@@ -555,6 +562,59 @@ def _wizard_other(inq) -> None:
                 else:
                     iv = cur_int
                 print(f"{_GREEN}✓ 已保存视频理解默认：{'开' if on else '关'} / {iv}s{_RESET}", file=sys.stdout)
+            elif pick == "comments":
+                _show_header("评论/弹幕整合默认")
+                print(f"{_DIM}把弹幕+评论区观点整合进笔记（需 B 站 SESSDATA；没配则评论拿不到，任务不阻断）。{_RESET}", file=sys.stdout)
+                cur_on = bool(get_app_config().get("include_comments", False))
+                cur_lim = int(get_app_config().get("comments_limit") or 20)
+                on = inq.confirm(message="默认整合弹幕+评论区观点？", default=cur_on, keybindings=_KB).execute()
+                set_app_config("include_comments", bool(on))
+                lim = inq.text(message=f"评论条数（当前 {cur_lim}，默认 20）", keybindings=_KB).execute()
+                if lim:
+                    try:
+                        lim = max(1, int(lim))
+                    except ValueError:
+                        lim = 20
+                    set_app_config("comments_limit", lim)
+                else:
+                    lim = cur_lim
+                print(f"{_GREEN}✓ 已保存评论/弹幕整合默认：{'开' if on else '关'} / {lim}条{_RESET}", file=sys.stdout)
+                print(f"{_DIM}需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到。{_RESET}", file=sys.stdout)
+            elif pick == "note-default":
+                _show_header("笔记默认")
+                print(f"{_DIM}不传 style / screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM。{_RESET}", file=sys.stdout)
+                style_map = [
+                    ("minimal", "minimal 精简"),
+                    ("detailed", "detailed 详细"),
+                    ("academic", "academic 学术"),
+                    ("tutorial", "tutorial 教程"),
+                    ("xiaohongshu", "xiaohongshu 小红书"),
+                    ("life_journal", "life_journal 生活向"),
+                    ("task_oriented", "task_oriented 任务导向"),
+                    ("business", "business 商业风格"),
+                    ("meeting_minutes", "meeting_minutes 会议纪要"),
+                ]
+                cur_style = get_app_config().get("default_style") or "detailed"
+                style = inq.select(
+                    message=f"默认笔记风格（当前 {cur_style}）",
+                    choices=[{"name": n, "value": v} for v, n in style_map],
+                    default=cur_style,
+                    keybindings=_KB,
+                ).execute()
+                set_app_config("default_style", style)
+                ss = inq.confirm(
+                    message="默认开启截图？",
+                    default=bool(get_app_config().get("default_screenshot", False)),
+                    keybindings=_KB,
+                ).execute()
+                set_app_config("default_screenshot", bool(ss))
+                ad = inq.confirm(
+                    message="默认用 AGENT 直接写笔记（不走配置 LLM）？",
+                    default=bool(get_app_config().get("agent_direct", False)),
+                    keybindings=_KB,
+                ).execute()
+                set_app_config("agent_direct", bool(ad))
+                print(f"{_GREEN}✓ 已保存笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}{_RESET}", file=sys.stdout)
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
 
@@ -645,7 +705,7 @@ def _setup_cli_fallback() -> None:
         except Exception as e:
             print(f"   ⚠ 下载失败：{e}", file=sys.stdout)
 
-    print("\n③ 其他（视频理解默认）：", file=sys.stdout)
+    print("\n③ 其他（视频理解默认 / 评论·弹幕整合默认 / 笔记默认）：", file=sys.stdout)
     print("   视频理解把画面按间隔抽帧发给多模态 LLM（需 qwen-vl / gpt-4o 等；会下载整个视频、比纯转写慢）", file=sys.stdout)
     cur_on = bool(get_app_config().get("video_understanding", False))
     cur_int = int(get_app_config().get("video_interval") or 6)
@@ -658,6 +718,48 @@ def _setup_cli_fallback() -> None:
         iv = 6
     set_app_config("video_interval", iv)
     print(f"   ✓ 视频理解默认：{'开' if on else '关'} / {iv}s", file=sys.stdout)
+    print("   评论/弹幕整合默认：把弹幕+评论区观点整合进笔记（需 B 站 SESSDATA；没配则评论拿不到，任务不阻断）", file=sys.stdout)
+    cur_on = bool(get_app_config().get("include_comments", False))
+    cur_lim = int(get_app_config().get("comments_limit") or 20)
+    on = _ask(f"   默认整合弹幕+评论区观点？[y/N]（当前 {'开' if cur_on else '关'}）", default="N").lower() == "y"
+    set_app_config("include_comments", bool(on))
+    lim = _ask(f"   评论条数（当前 {cur_lim}，默认 20）", default=str(cur_lim))
+    try:
+        lim = max(1, int(lim))
+    except ValueError:
+        lim = 20
+    set_app_config("comments_limit", lim)
+    print(f"   ✓ 评论/弹幕整合默认：{'开' if on else '关'} / {lim}条", file=sys.stdout)
+    print("   需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到", file=sys.stdout)
+    print("   笔记默认：不传 style/screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM", file=sys.stdout)
+    _NOTE_STYLES = [
+        "minimal 精简",
+        "detailed 详细",
+        "academic 学术",
+        "tutorial 教程",
+        "xiaohongshu 小红书",
+        "life_journal 生活向",
+        "task_oriented 任务导向",
+        "business 商业风格",
+        "meeting_minutes 会议纪要",
+    ]
+    cur_style = get_app_config().get("default_style") or "detailed"
+    for i, s in enumerate(_NOTE_STYLES, 1):
+        print(f"     {i}) {s}", file=sys.stdout)
+    cur_idx = next((i for i, s in enumerate(_NOTE_STYLES, 1) if s.startswith(cur_style)), 2)
+    sel = _ask(f"   默认笔记风格（当前 {cur_style}）", default=str(cur_idx))
+    try:
+        i = int(sel)
+        style = _NOTE_STYLES[i - 1].split()[0] if 1 <= i <= len(_NOTE_STYLES) else "detailed"
+    except (ValueError, IndexError):
+        style = "detailed"
+    set_app_config("default_style", style)
+    cur_ss = bool(get_app_config().get("default_screenshot", False))
+    ss = _ask(f"   默认开启截图？[y/N]（当前 {'开' if cur_ss else '关'}）", default="Y" if cur_ss else "N").lower() == "y"
+    set_app_config("default_screenshot", bool(ss))
+    ad = _ask("   默认用 AGENT 直接写笔记（不走配置 LLM）？[y/N]", default="N").lower() == "y"
+    set_app_config("agent_direct", bool(ad))
+    print(f"   ✓ 笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
 

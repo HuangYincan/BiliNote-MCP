@@ -1,6 +1,9 @@
+import base64
 import json
 import logging
 import os
+import re
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, Any
@@ -33,6 +36,7 @@ from app.transcriber.transcriber_provider import get_transcriber, _transcribers
 from app.utils.note_helper import replace_content_markers, prepend_source_link
 from app.utils.screenshot_marker import extract_screenshot_timestamps
 from app.utils.status_code import StatusCode
+from app.utils.task_manifest import record_task_paths
 from app.utils.video_helper import generate_screenshot
 from app.utils.video_reader import VideoReader
 
@@ -56,6 +60,33 @@ IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL", "/static/screenshots")
 # 日志配置
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+
+
+def _extract_note_title(markdown: str) -> Optional[str]:
+    """从生成的 markdown 提取 LLM 起的标题（第一个 H1/# 行），用于文件夹命名。"""
+    for line in (markdown or "").splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip(" #")
+    return None
+
+
+def _note_dir_name(title: Optional[str], task_id: str, base: Path) -> str:
+    """给一篇笔记一个文件夹名：优先 LLM 生成的笔记标题（或视频标题）清洗后；空/冲突时回退 task_id。
+
+    标题清洗：替换路径非法字符 + 截断 60，防路径穿越/超长；目标文件夹已存在（同名冲突）时加 task_id 后缀。
+    """
+    if title:
+        safe = re.sub(r'[\\/:*?"<>|]', "_", str(title)).strip(" .")[:60]
+        if safe:
+            target = base / safe
+            if not target.exists():
+                return safe
+            return f"{safe}-{task_id[:6]}"  # 同名冲突 → 加短 task_id 后缀
+    return task_id
 
 
 class NoteGenerator:
@@ -93,11 +124,15 @@ class NoteGenerator:
         _format: Optional[List[str]] = None,
         style: Optional[str] = None,
         extras: Optional[str] = None,
+        include_comments: bool = False,
+        comments_limit: int = 20,
         output_path: Optional[str] = None,
         notes_dir: Optional[str] = None,
         video_understanding: bool = False,
         video_interval: int = 0,
         grid_size: Optional[List[int]] = None,
+        cancel_event: Optional[threading.Event] = None,
+        material_only: bool = False,
     ) -> NoteResult | None:
         """
         主流程：按步骤依次下载、转写、GPT 总结、截图/链接处理、存库、返回 NoteResult。
@@ -113,10 +148,13 @@ class NoteGenerator:
         :param _format: 包含 'link' 或 'screenshot' 等字符串的列表，决定后续处理
         :param style: GPT 生成笔记的风格
         :param extras: 额外参数，传递给 GPT
+        :param include_comments: 是否抓取 B 站弹幕与热门评论并作为参考注入 prompt（仅对 B 站视频生效）
+        :param comments_limit: 抓取评论条数上限，仅在 include_comments 为 True 时生效
         :param output_path: 下载输出目录（可选）
         :param video_understanding: 是否需要视频拼图理解（生成缩略图）
         :param video_interval: 视频帧截取间隔（秒），仅在 video_understanding 为 True 时生效
         :param grid_size: 生成缩略图时的网格大小，如 [3, 3]
+        :param material_only: 只产出素材包（转写/帧/评论/音视频路径），跳过 LLM 总结与写库，返回 NoteResult.material
         :return: NoteResult 对象，包含 markdown 文本、转写结果和音频元信息
         """
         if grid_size is None:
@@ -129,12 +167,24 @@ class NoteGenerator:
             # 获取下载器与 GPT 实例
 
             downloader = self._get_downloader(platform)
-            gpt = self._get_gpt(model_name, provider_id)
+            # material_only 模式不调用 LLM，也不要求配置 provider/model
+            gpt = None if material_only else self._get_gpt(model_name, provider_id)
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             # 缓存文件路径
             audio_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_audio.json"
             transcript_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_transcript.json"
             markdown_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_markdown.md"
+            # 记录主要产物路径到 manifest（尽力而为，失败不阻断生成）
+            record_task_paths(task_id, [
+                audio_cache_file,
+                transcript_cache_file,
+                markdown_cache_file,
+                NOTE_OUTPUT_DIR / f"dl_{task_id}",
+                NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+                NOTE_OUTPUT_DIR / f"{task_id}.json",
+                NOTE_OUTPUT_DIR / f"{task_id}.gpt.checkpoint.json",
+            ])
             # 1. 获取字幕/转写：优先缓存 → 平台字幕 → 音频转写
             transcript = None
 
@@ -201,6 +251,19 @@ class NoteGenerator:
                     task_id=task_id,
                 )
 
+            # 3.5 抓取 B 站弹幕/热门评论（可选；失败不阻断笔记生成）
+            comments_danmaku = None
+            if include_comments:
+                comments_danmaku = self._fetch_comments_danmaku(video_url, comments_limit)
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
+
+            # 3.0 material_only：只组装素材包返回（转写/帧/评论/音视频路径），不调 LLM、不写库
+            if material_only:
+                material = self._build_note_material(task_id, audio_meta, transcript, comments_danmaku)
+                self._update_status(task_id, TaskStatus.SUCCESS)
+                logger.info(f"素材准备完成 (task_id={task_id})")
+                return NoteResult(markdown="", transcript=transcript, audio_meta=audio_meta, material=material)
+
             # 3. GPT 总结
             markdown = self._summarize_text(
                 audio_meta=audio_meta,
@@ -213,18 +276,26 @@ class NoteGenerator:
                 style=style,
                 extras=extras,
                 video_img_urls=self.video_img_urls,
+                comments_danmaku=comments_danmaku,
+                cancel_event=cancel_event,
             )
 
             # 4. 截图 & 链接替换
             assets_dir = None
             _note_dir = None
+            # 文件夹名优先用 LLM 生成的笔记标题（markdown 的 H1），更准；回退视频标题
+            folder_title = _extract_note_title(markdown) or (audio_meta.title if audio_meta else None)
             if _format and "screenshot" in _format:
                 # 截图模式：note.md 与 Assets/ 同层、相对引用；目录用户可指定
-                _note_dir = Path(notes_dir or (NOTE_OUTPUT_DIR / task_id))
+                if notes_dir:
+                    # 一篇笔记一个文件夹：<notes_dir>/<标题>/（内含 note.md + Assets/）
+                    _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
+                else:
+                    _note_dir = NOTE_OUTPUT_DIR / task_id
                 assets_dir = _note_dir / "Assets"
             elif notes_dir:
-                # 用户指定了输出目录（即使不插图片），也把笔记写成文件
-                _note_dir = Path(notes_dir)
+                # 用户指定了输出目录（即使不插图片），每篇笔记一个文件夹（以标题命名）
+                _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
             if _format:
                 markdown = self._post_process_markdown(
                     markdown=markdown,
@@ -234,6 +305,7 @@ class NoteGenerator:
                     platform=platform,
                     assets_dir=assets_dir,
                 )
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             markdown = prepend_source_link(markdown, str(video_url))
 
@@ -242,16 +314,25 @@ class NoteGenerator:
                 _note_dir.mkdir(parents=True, exist_ok=True)
                 (_note_dir / "note.md").write_text(markdown, encoding="utf-8")
                 logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
+                record_task_paths(task_id, [_note_dir, _note_dir / "note.md"])
 
             # 5. 保存记录到数据库
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
             self._update_status(task_id, TaskStatus.SAVING)
             self._save_metadata(video_id=audio_meta.video_id, platform=platform, task_id=task_id)
 
             # 6. 完成
             self._update_status(task_id, TaskStatus.SUCCESS)
             logger.info(f"笔记生成成功 (task_id={task_id})")
-            return NoteResult(markdown=markdown, transcript=transcript, audio_meta=audio_meta)
+            return NoteResult(
+                markdown=markdown,
+                transcript=transcript,
+                audio_meta=audio_meta,
+                note_dir=str(_note_dir) if _note_dir is not None else None,
+            )
 
+        except TaskCancelledError:
+            raise  # 取消要透传给上层（MCP 层写 CANCELLED），不能转成 FAILED
         except Exception as exc:
             logger.error(f"生成笔记流程异常 (task_id={task_id})：{exc}", exc_info=True)
             self._update_status(task_id, TaskStatus.FAILED, message=str(exc))
@@ -414,6 +495,8 @@ class NoteGenerator:
         # 每个任务独立的下载子目录：同一视频并发任务不再写同一个 {video_id}.mp4/.mp3，
         # 下载器/转写器/事件清理都只在自己的 dl_{task_id} 里活动，互不干扰
         dl_dir = output_path or str(NOTE_OUTPUT_DIR / f"dl_{task_id}")
+        # 记录下载目录与音频缓存到 manifest（尽力而为）
+        record_task_paths(task_id, [dl_dir, audio_cache_file])
 
         # 已有缓存，尝试加载
         if audio_cache_file.exists():
@@ -458,6 +541,7 @@ class NoteGenerator:
                 video_path_str = downloader.download_video(video_url, output_dir=dl_dir)
                 self.video_path = Path(video_path_str)
                 logger.info(f"视频下载完成：{self.video_path}")
+                record_task_paths(task_id, [self.video_path])
 
                 if grid_size:
                     self.video_img_urls = VideoReader(
@@ -603,7 +687,9 @@ class NoteGenerator:
         formats: List[str],
         style: Optional[str],
         extras: Optional[str],
-            video_img_urls: List[str],
+        video_img_urls: List[str],
+        comments_danmaku: Optional[str] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> str | None:
         """
         调用 GPT 对转写结果进行总结，生成 Markdown 文本并缓存。
@@ -617,6 +703,8 @@ class NoteGenerator:
         :param formats: 包含 'link' 或 'screenshot' 的列表
         :param style: GPT 输出风格
         :param extras: GPT 额外参数
+        :param video_img_urls: 视频截图 URL 列表
+        :param comments_danmaku: 观众评论与弹幕文本（可选，注入 prompt 供参考）
         :return: 生成的 Markdown 字符串
         """
         task_id = markdown_cache_file.stem
@@ -628,6 +716,7 @@ class NoteGenerator:
             tags=audio_meta.raw_info.get("tags", []),
             screenshot=screenshot,
             video_img_urls=video_img_urls,
+            comments_danmaku=comments_danmaku,
             link=link,
             _format=formats,
             style=style,
@@ -636,7 +725,7 @@ class NoteGenerator:
         )
 
         try:
-            markdown = gpt.summarize(source)
+            markdown = gpt.summarize(source, cancel_event=cancel_event)
             markdown_cache_file.write_text(markdown, encoding="utf-8")
             logger.info(f"GPT 总结并缓存成功 ({markdown_cache_file})")
             return markdown
@@ -644,6 +733,102 @@ class NoteGenerator:
             logger.error(f"GPT 总结失败：{exc}")
             self._handle_exception(task_id, exc)
             raise
+
+    def _fetch_comments_danmaku(
+        self,
+        video_url: Union[str, HttpUrl],
+        comments_limit: int,
+    ) -> Optional[str]:
+        """
+        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本。
+
+        抓取失败（含 fetcher 模块缺失/接口异常）只记日志，返回 None，不阻断笔记生成。
+        BilibiliCommentFetcher 的 fetch_* 返回 {"ok": bool, ...}，绝无异常抛出。
+
+        :param video_url: 视频链接
+        :param comments_limit: 抓取评论条数上限
+        :return: 拼接好的弹幕+评论文本；失败或无数据时返回 None
+        """
+        try:
+            from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+            fetcher = BilibiliCommentFetcher()
+        except Exception as exc:
+            logger.warning(f"BilibiliCommentFetcher 不可用，跳过弹幕/评论抓取: {exc}")
+            return None
+
+        parts: List[str] = []
+
+        danmaku = fetcher.fetch_danmaku(str(video_url))
+        if danmaku.get("ok"):
+            summary = danmaku.get("danmaku_summary") or ""
+            if summary:
+                parts.append(f"【弹幕】\n{summary}")
+        else:
+            logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
+
+        comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
+        if comments.get("ok"):
+            rows = comments.get("comments") or []
+            if rows:
+                lines = [
+                    f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
+                    for c in rows
+                ]
+                parts.append("【热门评论】\n" + "\n".join(lines))
+        else:
+            logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
+
+        if not parts:
+            return None
+        return "\n\n".join(parts)
+
+    def _build_note_material(
+        self,
+        task_id: Optional[str],
+        audio_meta: AudioDownloadResult,
+        transcript: TranscriptResult,
+        comments_danmaku: Optional[str],
+    ) -> dict:
+        """组装素材包：转写全文+分段、持久化帧图片（file:// 绝对路径）、评论/弹幕、音视频路径。
+
+        material_only 模式的产物，供 AGENT（Claude Code）直接读取素材自行写笔记：
+          - transcript: asdict(TranscriptResult) → {language, full_text, segments: [{start, end, text}]}
+          - frames: self.video_img_urls 是 base64 data URI（VideoReader 临时文件已删），
+            逐张解码写 NOTE_OUTPUT_DIR/{task_id}/frames/frame_{i}.jpg，material 里给 file:// 绝对路径；
+            解码/落盘失败逐张跳过，不阻断整个素材包。
+          - video_path / audio_path: 音视频本地文件路径（可能为 None）。
+        """
+        transcript_dict = asdict(transcript) if transcript else None
+
+        frames: List[str] = []
+        if self.video_img_urls:
+            frames_dir = NOTE_OUTPUT_DIR / str(task_id) / "frames"
+            try:
+                frames_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                logger.warning(f"创建帧目录失败 (task_id={task_id})，跳过帧持久化: {exc}")
+                self.video_img_urls = []  # 目录都建不了，后续逐张必然失败，直接清空
+            for i, data_uri in enumerate(self.video_img_urls, start=1):
+                try:
+                    if isinstance(data_uri, str) and data_uri.startswith("data:image"):
+                        b64 = data_uri.split(",", 1)[1]
+                        frame_path = frames_dir / f"frame_{i}.jpg"
+                        frame_path.write_bytes(base64.b64decode(b64))
+                        frames.append(frame_path.as_uri())
+                    else:
+                        logger.warning(f"跳过非 data URI 帧 (index={i}): {str(data_uri)[:60]}")
+                except Exception as exc:
+                    logger.warning(f"帧 {i} 解码/落盘失败，跳过: {exc}")
+
+        return {
+            "title": audio_meta.title if audio_meta else None,
+            "transcript": transcript_dict,
+            "frames": frames,
+            "comments_danmaku": comments_danmaku,
+            "video_path": str(self.video_path) if self.video_path else None,
+            "audio_path": audio_meta.file_path if audio_meta else None,
+        }
 
     def _post_process_markdown(
         self,

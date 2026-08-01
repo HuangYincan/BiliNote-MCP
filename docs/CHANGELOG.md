@@ -4,6 +4,39 @@
 
 ## 维护（2026-08-01）
 
+- **README 结构调整**：「真实端到端使用示例」上移到「快速开始（TL;DR）」之后、安装之前（含三份成品笔记的直接链接 + 完整过程记录）；安装章节前新增「以下内容写给 Agent 看，人类可让 Agent 安装」说明；顺手修复「图片插入（便携笔记）」章节一处重复行。README 中英同步。
+- **新增真实端到端使用示例 `examples/note-generation-example/`**：一次「3 个 B 站链接 + 输出目录」的极简 Prompt 自动生成三份精修笔记（参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修），附三份成品笔记（`note.md` 精修版 + `note_original.md` 原版 + `Assets/` 截图）与完整过程记录（`README.md`）。README 中英加「真实端到端使用示例」入口。
+- **SKILL 全自动改为「列出完整参数待确认」**：任务开始问「全自动/手动」后，全自动不再静默套默认，而是**先用 setup 默认解析出本次任务将用的完整参数清单一次性列给用户确认**（生成方式/LLM 模型（或选 AGENT 直接生成 `agent_direct`）/ 风格 `default_style` / 视频理解默认 / 评论默认 / 截图默认 / **生成后是否 AGENT 后续优化**）；用户确认即生成，要改某项再以提问方式改，说「你定」用默认。「AGENT 直接生成」改为在**选 LLM 模型阶段**提供（默认用配置 LLM，可选 AGENT 直接生成，不走配置 LLM）。手动模式不变（逐个问）。SKILL.md / reference/tools.md / README（中英）/ docs/04 同步。
+- **README 开发版「从 main 切到 dev」教程补全**：切 dev 的 MCP 命令前加 `claude mcp remove bilinote`（若先前在 main，先移除插件默认 main MCP 再覆盖 dev，同名 `add @dev` 才生效）。README 中英 / docs/04 同步。
+- **SKILL 双模式（全自动/手动）+ AGENT 直接生成**：
+  - SKILL 强制规则新增第 0 条：任务开始**必须先问「全自动」还是「手动」** —— 全自动套用 setup 默认（默认模型 / `default_style` / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认）不逐个问；手动逐个确认（现有流程）。「先确认参数」改为依模式而定（手动问 / 全自动用默认）。
+  - 新增**「AGENT 直接生成」分支**（`agent_direct`，默认关）：`prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` 只跑下载→转写→（可选）抽帧→（可选）评论、**不调用配置 LLM**；`get_task_status` 轮询到 SUCCESS 后读素材包（`transcript.full_text` / `frames` / `comments_danmaku`），**AGENT 自己写笔记**（多模态下 Read 看图、问风格、有评论/弹幕时加「观众观点」章节；转写过长按章节分段精修或让用户指定重点）。
+  - 新 MCP 工具 `prepare_note_material`：返回 `{kind:"material", title, transcript:{language, full_text, segments}, frames:[file://...jpg], comments_danmaku, video_path, audio_path}`。
+  - setup ③ 新增 `default_style`（默认 detailed）/ `default_screenshot`（默认关）/ `agent_direct`（默认关）默认；`generate_note` 不传 style/screenshot/video_understanding/include_comments 即套默认。
+  - SKILL / `reference/tools.md` / README（中英）/ docs/04 同步：全自动/手动模式说明 + AGENT 直接生成流程 + `prepare_note_material` 工具参考。
+- **新增清理功能（task manifest + 三个 MCP 工具）**：
+  - **可追踪**：任务产生的文件路径（下载音频/转写/markdown/status/result JSON、`dl_{task_id}/`、视频、便携笔记目录）由流水线**尽力而为**记入 `note_results/{task_id}.manifest.json`（`app/utils/task_manifest.py` 的 `record_task_paths`/`get_task_paths`，原子写 tmp+replace，失败不阻断生成）。
+  - **新 MCP 工具**：`get_task_files(task_id)`（先查后清：manifest 记录 + `{task_id}*` 前缀扫描真实文件）、`cleanup_note(task_id, include_note=False)`（按任务清中间产物，默认保留最终笔记，`include_note=True` 连笔记+manifest 一起删）、`cleanup_all(include_config=False, include_models=False)`（全局恢复出厂：清空 note_results/static/screenshots/logs，默认保留 config/ 与 models/）。
+  - **安全**：只删 manifest 记录 / 明确前缀模式（`note_results/{task_id}`、`dl_{task_id}`）的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计；数据库 `bili_note.db` 不动。
+  - 工具共 **22 个**（原 18 + `prepare_note_material` + 3 清理）。SKILL reference / README（中英）/ docs/04 增补「清理与存储」章节与工具参考；新增 `tests/test_task_manifest.py`（9 项：record/dedup、先查后清、按任务清理保留/连删笔记、路径穿越拒绝、全局清理保留/清 config）。
+- **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
+- **修「第二个工具调用挂起」（stderr 管道死锁）+ 并发门禁放宽 + subagent 编排**：
+  - **根因**：后台任务大量日志/vendored print 写 stderr，Claude Code 客户端未及时排空 → stderr 管道（~64KB）塞满 → 服务器 logging 持锁阻塞 → 事件循环停 → 后续调用挂起。**修复**：MCP server 启动早期把 stderr 重定向到 `data/logs/mcp_stderr.log`（`os.dup2` + `sys.stderr`），协议只用 stdin/stdout，stderr 进文件不影响；实测修复后 stderr 未排空时第二个调用 0.0s 返回。
+  - **并发门禁放宽**：从「有进行中任务就拒绝（强制串行）」改为「最多 `BILINOTE_MAX_WORKERS`（默认 3）个进行中任务，超出拒绝」—— 允许 subagent 并行提交多视频。
+  - **SKILL**：多视频 → 主 agent 对每个视频起一个 subagent（各自 generate_note + 轮询 + 汇报），主 agent 汇总；主 agent 自己不在同一回合连续调用多个 generate_note。
+  - README（中英）/ docs/04 / reference 同步。
+- **修 MCP 在笔记目录泄漏 config/logs**：三个 CWD 相对路径的创建者 —— ① `server.py` 的 `app.*` 导入在 `setup_environment()` 之前（logger 用 `./logs`）；② `ProxyConfigManager` 硬编码 `config/proxy.json`；③ `WhisperModelRegistry` 硬编码 `config/whisper_models.json`。全部改为尊重 `BILINOTE_CONFIG_DIR`/`BILINOTE_DATA_DIR`（`server.py` 导入顺序调整 + 两个 config 管理器默认路径改环境变量），任意 CWD 启动都不再在笔记目录/当前目录冒出空的 config/logs。
+- **笔记文件夹结构（一篇一夹）+ 评论/弹幕可视化**：
+  - 指定 `notes_dir` 时每篇笔记一个文件夹 `<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；同名冲突加短 task_id 后缀）—— 多篇互不覆盖；`NoteResult.note_dir` 返回真实子文件夹，server 据此报告位置。
+  - `include_comments=True` 时 prompt 强制笔记输出「观众观点」章节（总结弹幕/评论区反复出现的观点、补充、纠错；无可总结写「（无）」）—— 之前只是「仅供参考」喂 LLM，笔记里不可见。
+  - README（中英）/ docs/04 / CHANGELOG 同步。
+- **SKILL 重构（核心精简 + reference 文件夹）**：SKILL 过长导致 agent 注意力分散、跳过「必须先确认参数」。`skills/bilinote/SKILL.md` 重写为「⚡ 强制规则（违反=任务失败，含必须先确认参数）+ 紧凑工作流」；工具接口/配置挪到 `reference/tools.md`、故障排查/并发/B站细节挪到 `reference/troubleshooting.md`（agent 按需 Read）。强制「必须先问参数」放到正文最前。
+- **MCP 取消任务 + 强制串行**：
+  - 新增 `cancel_note(task_id)` 工具：取消进行中/排队任务（协作式 —— `threading.Event`，任务在各阶段边界 + LLM chunk 循环检查；排队任务可 `Future.cancel()` 释放 worker 槽）。`TaskStatus` 加 `CANCELLED`；`wait_for_note` 终止状态含 `CANCELLED`（不再空转超时）。
+  - **`generate_note` 强制串行**：同一会话有进行中任务时**直接拒绝**新提交（并行提交多个 `generate_note` 会让 Claude Code 客户端挂起）—— 必须一次一个：提交 → 等到 SUCCESS/FAILED/CANCELLED → 再提交下一个；真正并行请开多个会话。
+  - SKILL/README（中英）/docs/04 同步：串行 + cancel_note 说明。
+  - 取消异常/助手独立到 `app/exceptions/task.py`（避免 note→gpt_factory→universal_gpt→note 循环导入）。
+
 - **setup 向导 LLM 配置：连通性检测 + 默认模型**：
   - 供应商改为「管理」子菜单：✏ 编辑 key/base_url / 🔌 检测连接 → 列出可用模型 → 设默认 / ← 返回（选中供应商进入，非再点即编辑）。
   - 检测 = OpenAI 兼容 `GET /v1/models`（一次验证 key/base_url 并拿到模型列表，超时 15s）；`/v1/models` 不可用（部分中转站/自建网关）时降级「最小对话请求」chat 探测。
@@ -33,6 +66,11 @@
   - 新增 `dev` 分支：日常开发走 dev（功能分支 → PR → dev），dev 稳定后 PR → main 发布。
   - `main` 分支保护：要求 PR + CI 绿 + 1 个 review，直接 push 被拒 → **main 永远可用**。
   - 发布 `v0.1.0`（首个稳定版；稳定安装：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`）。
+- **「评论/弹幕整合」配套（setup CLI / SKILL / docs）**：
+  - 契约：`generate_note` 新增 `include_comments`（是否整合弹幕+评论区观点）/ `comments_limit`（评论条数，默认 20）；`app_config` 新键 `include_comments`(bool, 默认 False) / `comments_limit`(int, 默认 20)；新增独立工具 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`（需 B 站 SESSDATA；抓取失败不阻断笔记）。
+  - setup ③ 新增「评论/弹幕整合默认」（开/关 + 评论条数，`max(1,int)` 异常兜底 20），持久化 `app_config.json`；主菜单 ③ 文案、纯文本兜底向导同步补上。
+  - SKILL「确认参数」新增**必须问**条目：是否整合弹幕、评论区观点 —— 默认否，要则问条数；需 SESSDATA，没配引导 `bilinote-mcp login bilibili` 扫码；**即使 setup 配了默认本次也先问**，只有用户说「你定/用默认」才用默认值；配置要点 / 故障排查表补对应行。
+  - README / README_EN / docs/04（③ 描述、新增「整合弹幕+评论区观点」章节、工具参考补 `fetch_comments`/`fetch_danmaku` 与 `include_comments`/`comments_limit` 参数）同步。
 
 ## 维护（2026-07-31）
 

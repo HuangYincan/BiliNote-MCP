@@ -47,6 +47,18 @@ bilinote-mcp setup
 | 三 · uv tool install | 仅 MCP（固定版本，启动最快 ~1s） | 要稳定版本 |
 | 四 · 克隆 + install.sh | MCP + Skill + 自动 setup，无 uv 兜底 | 没装 uv / 想跑源码 |
 
+## 真实端到端使用示例
+
+只给「3 个 B 站链接 + 输出目录」、**一个参数都没说明**，agent 就自动跑完 **参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修**，产出三份带截图、含「观众观点」的便携精修笔记：
+
+- [雅思教父刘洪波的雅思真经第一课](https://www.bilibili.com/video/BV1c54y187SH/) → [`notes/ielts-true-class/note.md`](examples/note-generation-example/notes/ielts-true-class/note.md)
+- [和解剖了4000具尸体的法医，一起看了影片中的尸体](https://www.bilibili.com/video/BV1QEgZ6rEGj/) → [`notes/forensic-doctor-reacts/note.md`](examples/note-generation-example/notes/forensic-doctor-reacts/note.md)
+- [李宏毅 | 自注意力机制和Transformer详细解析](https://www.bilibili.com/video/BV1r8nMz4EAj/) → [`notes/transformer-self-attention/note.md`](examples/note-generation-example/notes/transformer-self-attention/note.md)
+
+完整过程记录（前置参数 / Prompt / 参数确认对话 / 输出结果）见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
+
+> 💡 **以下从「安装」到「工具参考」都写得尽量详细，主要是给 Agent 看的**（Claude Code 等）。人类完全不必逐条照做 —— 直接对 agent 说一句「帮我安装这个 MCP 并生成视频笔记」，它就会照着下面的命令一步步执行。
+
 ## 安装
 
 ### 前提条件
@@ -126,7 +138,7 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 
 - **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
 - **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
-- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）。
+- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）、**评论/弹幕整合默认**（开/关 + 评论条数，**持久化保存**，需 B 站 SESSDATA）、**笔记默认**（`default_style` 默认 detailed / `default_screenshot` 默认关 / `agent_direct` 默认关，**持久化保存**）—— 全自动模式套用这些默认（会先列出完整参数清单给用户确认）。
 
 ### 手动 CLI（key 不进对话）
 
@@ -170,9 +182,24 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 1. `health_check` —— 确认 FFmpeg / 数据库就绪；
 2. `list_providers` —— 确认供应商 key=已填（看不到明文）；没有就先用 CLI 配；
 3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
-4. `get_task_status(task_id)` **轻量快照轮询**，等到 `SUCCESS`（多任务并行时务必用它，不要用阻塞的 `wait_for_note`）；
+4. `get_task_status(task_id)` **轻量快照轮询**，等到 `SUCCESS`/`FAILED`/`CANCELLED`（**任务一次只发一个**，server 有进行中任务时会拒绝新提交；不要并行塞多个 `generate_note`）；
 5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG；
 6. **问你是否要根据笔记 + 提取的字幕（`result.transcript`）做后续优化**（补齐细节/修正不一致/增强结构）—— agent 侧精修，不新增工具。
+
+### 全自动 / 手动模式 + AGENT 直接生成
+
+任务开始时 agent **会先问「全自动」还是「手动」**：
+
+- **全自动**：用 setup ③ 的默认解析出**完整参数清单**（生成方式/LLM 模型（或选 AGENT 直接生成）/ `default_style`（默认 detailed）/ 视频理解默认 / 评论默认 / 截图默认 / **生成后是否后续优化**），**一次性列给用户确认**、不逐个问；用户要改某项再以提问方式改，确认后 `generate_note` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。「AGENT 直接生成」在选 LLM 模型阶段提供（默认用配置 LLM）。
+- **手动**：逐个确认参数（LLM 模型、笔记风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），确认完再生成。
+
+**AGENT 直接生成（`agent_direct`）**：在**选 LLM 模型阶段**提供选项 —— 手动模式问「用哪个模型，还是 AGENT 直接生成」；全自动模式默认用配置 LLM，可在参数清单里改选。开启后**不走配置的 LLM**，由 agent 自己写笔记：
+
+1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`；
+2. `get_task_status(task_id)` 轮询到 `SUCCESS` → 拿到素材包（`result.transcript.full_text` 完整转写、`result.frames` 抽帧图、`result.comments_danmaku` 评论/弹幕）；
+3. agent 读转写 / 用 Read 看图 → **自己生成 Markdown**（问风格，默认 detailed；有评论/弹幕时笔记含「观众观点」章节）→ 呈现。
+
+转写过长（如 2h 视频）时按章节分段精修或让用户指定重点。其余流程（health_check / validate_url / 轮询 / 后续优化）与常规一致。
 
 ### 手动工具速查（非敏感配置）
 
@@ -200,8 +227,24 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - 每 `video_interval` 秒抽一帧，按 `grid_size` 拼成网格图，以 base64 内嵌发给 LLM；
 - **需多模态（vision）模型**，deepseek-chat 等纯文本模型不支持；
 - `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
-- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（SKILL 仍要求**每次先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值）；
+- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值；**全自动模式**套默认（先列出参数清单待确认））；
 - 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
+
+### 进阶：整合弹幕+评论区观点
+
+想让笔记把 B 站**弹幕**和**评论区**的高频观点也整理进去（哪些弹幕刷屏、评论区在聊什么），`generate_note` 加：
+
+```text
+generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
+```
+
+- 整合弹幕+评论区观点，让笔记不仅来自音轨，还能反映观众讨论；
+- **笔记会新增一节「观众观点」**：总结弹幕刷屏/评论区反复出现的观点、补充、纠错（引用实际内容，不捏造）；无可总结时写「（无）」；
+- `comments_limit` 控制抓取的评论条数（默认 20）；
+- **需 B 站 SESSDATA**（登录态）：没配则评论拿不到 —— 先 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；
+- **抓取失败不阻断任务**：拿不到评论/弹幕时笔记照常生成，跳过该部分即可；
+- 只想单独拉数据看，用 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` 两个工具；
+- **默认值可在 setup ③ 配置**（默认关 / 20条）：agent 未显式传 `include_comments` / `comments_limit` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否整合，只有用户说「你定/用默认」才用默认值；**全自动模式**套默认（先列出参数清单待确认））。
 
 ### 进阶：图片插入（便携笔记）
 
@@ -214,15 +257,27 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - 产出**便携笔记**：`note_dir/note.md` + `note_dir/Assets/*.jpg`，markdown 里用**相对引用** `![...](Assets/xxx.jpg)`；
 - 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
 - **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
-- **指定了 `notes_dir` 时，即使不插图片也会把 `note.md` 写到该目录**（适合「生成笔记到某文件夹」）；
+- **指定了 `notes_dir` 时，每篇笔记一个文件夹**：`<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；冲突自动加短 task_id 后缀）—— 即使不插图片也会写文件（适合「生成笔记到某文件夹」，且多篇互不覆盖）；
 - 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
+
+### 进阶：清理与存储（cleanup）
+
+任务产生的文件（下载的视频/音频、转写、截图、临时文件）会堆积占存储。AGENT 可自助清理：
+
+- **先查后清**：`get_task_files(task_id)` —— 列出该任务在磁盘上相关的文件/目录（manifest 记录 + `{task_id}*` 前缀扫描），返回 `{task_id, manifest_paths, existing}`。
+- **按任务清理**：`cleanup_note(task_id, include_note=False)` —— 删该任务中间产物（视频/音频/转写/截图/`dl_{task_id}/`），**默认保留最终笔记** `note.md`；`include_note=True` 连笔记一起删。
+- **全局清理（恢复出厂）**：`cleanup_all(include_config=False, include_models=False)` —— 清空 `note_results/*`、`static/screenshots/*`、`logs/*`；**默认保留** `config/`（LLM key / cookie / 转写设置）与 `models/`（模型可复用、重下成本高），`include_config=True` / `include_models=True` 才一起清。数据库记录（`bili_note.db`）不动。
+
+安全：只删 manifest 记录 / 明确前缀模式的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计。
 
 ## 工具参考
 
 | 工具 | 说明 |
 |------|------|
 | `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
+| `prepare_note_material` | 只跑下载/转写/抽帧/评论，**不调用配置 LLM**；返回素材包（`transcript.full_text` / `frames` / `comments_danmaku`），供 AGENT 直接生成笔记（见[全自动 / 手动模式 + AGENT 直接生成](#全自动--手动模式--agent-直接生成)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
+| `cancel_note` | 取消进行中/排队的任务（协作式，下一阶段边界生效） |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
 | `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
 | `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
@@ -230,6 +285,8 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
 | `validate_url` | 判断视频链接属于哪个平台 |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
+| `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
+| `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[清理与存储](#进阶清理与存储cleanup) |
 
 ## 环境变量（可选）
 
@@ -242,7 +299,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
 | `HF_ENDPOINT` | HuggingFace 镜像（国内下载慢/卡时用） | 官方 `https://huggingface.co`；国内可 `https://hf-mirror.com` |
 
-**多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务，任务在服务端后台并发执行）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— **要一次跑多个任务，请一次发一个 `generate_note`**（拿 task_id 再发下一个），任务照常在服务端并发跑。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，多任务并发时会让对话看起来卡住。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
+**会话内串行 + 多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程。**本会话内任务强制串行** —— `generate_note` 在已有进行中任务时会**直接拒绝**（必须一次一个：提交 → 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个）；**多个会话**可各自并行生成不同视频的笔记（互不干扰）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— 所以即使跨任务，也**不要在同一消息里并行塞多个 `generate_note`**。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，会卡住当前轮次。需要取消进行中任务用 `cancel_note(task_id)`。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
 
 ## 更新
 
@@ -272,7 +329,7 @@ bilinote-mcp providers list                                     # 查看（key �
 
 ## Skill
 
-仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。
+仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。核心 SKILL 精简为「强制规则 + 工作流」，工具接口 / 配置 / 故障排查在 `skills/bilinote/reference/` 下（agent 需要时按需 Read）。
 
 通过插件 marketplace 安装（同时装好 Skill 与 MCP server）：
 
@@ -299,6 +356,48 @@ claude plugin install bilinote@bilinote
 - **发布**：`dev` 稳定后 → PR `dev` → `main`（CI + review 通过才合）→ 打 `vX.Y.Z` tag → [Release workflow](.github/workflows/release.yml) 自动发 GitHub Release；
 - **`main` 有分支保护**：直接 push 被拒，只接受 PR 合入 —— 保证 `main` 永远可用（`uvx --from git+` 安装直接拉 main）；
 - 稳定安装用 tag：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`（追新去掉 `@v0.1.0`）。
+
+## 开发版（dev 分支尝鲜）
+
+`dev` 分支有未发布的新功能（尝鲜/测试用）。想提前用 dev（**从 main 切到 dev**）：
+
+**MCP 工具指 dev**（覆盖插件的 main MCP）：
+
+```bash
+claude mcp remove bilinote                                 # 如果先前在 main：先移除插件默认的 main MCP，再覆盖成 dev（同名 add 才能生效）
+claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
+```
+
+**SKILL 也指 dev**（marketplace 指到 dev 分支）：
+
+```bash
+claude plugin marketplace add HuangYincan/BiliNote-MCP@dev
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+```
+
+重启会话（或 `/reload-plugins`）生效。
+
+> **已经 pin 到 dev 后，代码更新了**：只需 `claude plugin marketplace update bilinote`（拉到 dev 最新 commit，`ref: dev` 会保留），再 `disable` + `install`；不用重新 `add @dev`。只有 marketplace 被切回 main 时才需要再 `add ...@dev`。
+
+**切回 main（稳定版）**：
+
+```bash
+claude mcp remove bilinote                                   # MCP 恢复插件默认（main）
+claude plugin marketplace add HuangYincan/BiliNote-MCP       # marketplace 回 main
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+# /reload-plugins
+```
+
+**CLI 用 dev**（PATH 上的 `bilinote-mcp` 若是 main 固定版）：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp setup`
+
+> **注意**：
+> - dev 与 main **共用数据目录** `~/.local/share/bilinote-mcp/`：LLM key / SESSDATA / 转写配置自动带过来，**不用重配**；但共用同一 SQLite，别两个同时跑任务。
+> - marketplace 指 dev 会**替换**生产 marketplace（不并存），测完记得切回 main。
+> - `git+...@dev` 是 uv/uvx 的分支 ref 语法；不带 ref 的默认安装拉的是 **main**（稳定）。
+> - marketplace 指 dev 只换 **SKILL**；MCP 工具要手动 `@dev` 覆盖（marketplace.json 里的 uvx 无 ref，仍拉 main）。
+> - dev 分支功能未发布，仅尝鲜/测试。
 
 ## 相关
 
