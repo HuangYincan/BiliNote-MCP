@@ -4,6 +4,11 @@
 
 ## 维护（2026-08-01）
 
+- **新增清理功能（task manifest + 三个 MCP 工具）**：
+  - **可追踪**：任务产生的文件路径（下载音频/转写/markdown/status/result JSON、`dl_{task_id}/`、视频、便携笔记目录）由流水线**尽力而为**记入 `note_results/{task_id}.manifest.json`（`app/utils/task_manifest.py` 的 `record_task_paths`/`get_task_paths`，原子写 tmp+replace，失败不阻断生成）。
+  - **新 MCP 工具**：`get_task_files(task_id)`（先查后清：manifest 记录 + `{task_id}*` 前缀扫描真实文件）、`cleanup_note(task_id, include_note=False)`（按任务清中间产物，默认保留最终笔记，`include_note=True` 连笔记+manifest 一起删）、`cleanup_all(include_config=False, include_models=False)`（全局恢复出厂：清空 note_results/static/screenshots/logs，默认保留 config/ 与 models/）。
+  - **安全**：只删 manifest 记录 / 明确前缀模式（`note_results/{task_id}`、`dl_{task_id}`）的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计；数据库 `bili_note.db` 不动。
+  - 工具共 **21 个**（原 18 + 3）。SKILL reference / README（中英）/ docs/04 增补「清理与存储」章节与工具参考；新增 `tests/test_task_manifest.py`（9 项：record/dedup、先查后清、按任务清理保留/连删笔记、路径穿越拒绝、全局清理保留/清 config）。
 - **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
 - **修「第二个工具调用挂起」（stderr 管道死锁）+ 并发门禁放宽 + subagent 编排**：
   - **根因**：后台任务大量日志/vendored print 写 stderr，Claude Code 客户端未及时排空 → stderr 管道（~64KB）塞满 → 服务器 logging 持锁阻塞 → 事件循环停 → 后续调用挂起。**修复**：MCP server 启动早期把 stderr 重定向到 `data/logs/mcp_stderr.log`（`os.dup2` + `sys.stderr`），协议只用 stdin/stdout，stderr 进文件不影响；实测修复后 stderr 未排空时第二个调用 0.0s 返回。

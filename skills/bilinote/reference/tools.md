@@ -24,6 +24,26 @@
 ### `cancel_note(task_id)`
 - 取消进行中/排队任务（协作式，下一阶段边界生效）；返回 `{ok, task_id, status}`。
 
+## 清理与存储
+
+任务产生的文件（下载的视频/音频、转写、截图、临时文件）会堆积占存储，AGENT 可自助清理。
+
+### `get_task_files(task_id)`
+- **先查后清**：列出该任务在磁盘上相关的文件/目录，返回 `{task_id, manifest_paths, existing}`。
+- `manifest_paths` 来自 `note_results/{task_id}.manifest.json`（流水线尽力而为记录）；`existing` 是真实存在的文件/目录（含 `dl_{task_id}/`、便携笔记目录等）。
+
+### `cleanup_note(task_id, include_note=False)`
+- 删某任务生成的**中间产物**（下载视频/音频、转写、截图、`dl_{task_id}/`、`{task_id}/Assets` 等）。
+- `include_note=False`（默认）：**保留最终笔记** `note.md` / `note_dir`；
+- `include_note=True`：连最终笔记一起删（含 manifest）。
+- 只删 manifest 记录 / `note_results/{task_id}*` / `dl_{task_id}` 前缀的文件，`resolve()` 校验在数据目录内（防路径穿越）。返回 `{deleted, missing, errors, note_kept}`。
+
+### `cleanup_all(include_config=False, include_models=False)`
+- **全局清理**（恢复出厂）：清空 `note_results/*`、`static/screenshots/*`、`logs/*` 的所有任务产物。
+- `include_config=False`（默认）：**保留** `config/`（LLM key / cookie / 转写设置）；`include_config=True` 才清。
+- `include_models=False`（默认）：**保留** `models/`（已下载模型可复用，重下成本高）；`include_models=True` 才清。
+- 数据库记录（`bili_note.db`）不动。
+
 ## 供应商 / 模型
 
 - `list_providers()` —— 供应商列表（key 掩码）。空 key 让用户在终端 `bilinote-mcp providers set <id> --api-key '...'`。

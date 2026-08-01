@@ -233,6 +233,16 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - **When `notes_dir` is set, each note gets its own folder**: `<notes_dir>/<note-title>/note.md` (title taken from the LLM-generated note's H1, falling back to the video title; conflicts get a short task-id suffix) — written even without screenshots, so multiple notes never overwrite each other;
 - How it works: `screenshot=True` makes the LLM emit `*Screenshot-[mm:ss]` markers, and `format=["screenshot"]` replaces them with images; pairing with video understanding (`video_understanding=True`) gives more natural results.
 
+### Advanced: cleanup & storage
+
+Task artifacts (downloaded video/audio, transcripts, screenshots, temp files) pile up and eat disk. Agents can clean them up self-service:
+
+- **Inspect first**: `get_task_files(task_id)` — lists the files/dirs a task created on disk (manifest records + `{task_id}*` prefix scan); returns `{task_id, manifest_paths, existing}`.
+- **Per-task cleanup**: `cleanup_note(task_id, include_note=False)` — deletes that task's intermediates (video/audio/transcript/screenshots/`dl_{task_id}/`), **keeping the final note** `note.md` by default; `include_note=True` also deletes the note.
+- **Global cleanup (factory reset)**: `cleanup_all(include_config=False, include_models=False)` — empties `note_results/*`, `static/screenshots/*`, `logs/*`; **keeps** `config/` (LLM keys / cookies / transcriber settings) and `models/` (models are reusable, re-downloading is expensive) by default, and only clears them with `include_config=True` / `include_models=True`. The database (`bili_note.db`) is untouched.
+
+Safety: only manifest-recorded / explicit-prefix paths are deleted, `resolve()`-validated to stay inside the data directory (path-traversal safe); failures are skipped one-by-one and reported.
+
 ## Tool reference
 
 | Tool | Description |
@@ -248,6 +258,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `validate_url` | Detect which platform a video link belongs to |
 | `set_downloader_cookie` | Set a platform cookie (e.g. Bilibili) |
 | `fetch_comments` / `fetch_danmaku` | Fetch Bilibili video comments / danmaku (`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`; needs SESSDATA) |
+| `get_task_files` / `cleanup_note` / `cleanup_all` | Inspect a task's files / clean one task (keeps the final note by default) / global cleanup (factory reset; keeps config & models by default), see [cleanup & storage](#advanced-cleanup--storage) |
 
 ## Environment variables (optional)
 
