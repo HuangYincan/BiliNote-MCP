@@ -93,6 +93,8 @@ class NoteGenerator:
         _format: Optional[List[str]] = None,
         style: Optional[str] = None,
         extras: Optional[str] = None,
+        include_comments: bool = False,
+        comments_limit: int = 20,
         output_path: Optional[str] = None,
         notes_dir: Optional[str] = None,
         video_understanding: bool = False,
@@ -113,6 +115,8 @@ class NoteGenerator:
         :param _format: 包含 'link' 或 'screenshot' 等字符串的列表，决定后续处理
         :param style: GPT 生成笔记的风格
         :param extras: 额外参数，传递给 GPT
+        :param include_comments: 是否抓取 B 站弹幕与热门评论并作为参考注入 prompt（仅对 B 站视频生效）
+        :param comments_limit: 抓取评论条数上限，仅在 include_comments 为 True 时生效
         :param output_path: 下载输出目录（可选）
         :param video_understanding: 是否需要视频拼图理解（生成缩略图）
         :param video_interval: 视频帧截取间隔（秒），仅在 video_understanding 为 True 时生效
@@ -201,6 +205,11 @@ class NoteGenerator:
                     task_id=task_id,
                 )
 
+            # 3.5 抓取 B 站弹幕/热门评论（可选；失败不阻断笔记生成）
+            comments_danmaku = None
+            if include_comments:
+                comments_danmaku = self._fetch_comments_danmaku(video_url, comments_limit)
+
             # 3. GPT 总结
             markdown = self._summarize_text(
                 audio_meta=audio_meta,
@@ -213,6 +222,7 @@ class NoteGenerator:
                 style=style,
                 extras=extras,
                 video_img_urls=self.video_img_urls,
+                comments_danmaku=comments_danmaku,
             )
 
             # 4. 截图 & 链接替换
@@ -603,7 +613,8 @@ class NoteGenerator:
         formats: List[str],
         style: Optional[str],
         extras: Optional[str],
-            video_img_urls: List[str],
+        video_img_urls: List[str],
+        comments_danmaku: Optional[str] = None,
     ) -> str | None:
         """
         调用 GPT 对转写结果进行总结，生成 Markdown 文本并缓存。
@@ -617,6 +628,8 @@ class NoteGenerator:
         :param formats: 包含 'link' 或 'screenshot' 的列表
         :param style: GPT 输出风格
         :param extras: GPT 额外参数
+        :param video_img_urls: 视频截图 URL 列表
+        :param comments_danmaku: 观众评论与弹幕文本（可选，注入 prompt 供参考）
         :return: 生成的 Markdown 字符串
         """
         task_id = markdown_cache_file.stem
@@ -628,6 +641,7 @@ class NoteGenerator:
             tags=audio_meta.raw_info.get("tags", []),
             screenshot=screenshot,
             video_img_urls=video_img_urls,
+            comments_danmaku=comments_danmaku,
             link=link,
             _format=formats,
             style=style,
@@ -644,6 +658,55 @@ class NoteGenerator:
             logger.error(f"GPT 总结失败：{exc}")
             self._handle_exception(task_id, exc)
             raise
+
+    def _fetch_comments_danmaku(
+        self,
+        video_url: Union[str, HttpUrl],
+        comments_limit: int,
+    ) -> Optional[str]:
+        """
+        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本。
+
+        抓取失败（含 fetcher 模块缺失/接口异常）只记日志，返回 None，不阻断笔记生成。
+        BilibiliCommentFetcher 的 fetch_* 返回 {"ok": bool, ...}，绝无异常抛出。
+
+        :param video_url: 视频链接
+        :param comments_limit: 抓取评论条数上限
+        :return: 拼接好的弹幕+评论文本；失败或无数据时返回 None
+        """
+        try:
+            from app.downloaders.bilibili_comment import BilibiliCommentFetcher
+
+            fetcher = BilibiliCommentFetcher()
+        except Exception as exc:
+            logger.warning(f"BilibiliCommentFetcher 不可用，跳过弹幕/评论抓取: {exc}")
+            return None
+
+        parts: List[str] = []
+
+        danmaku = fetcher.fetch_danmaku(str(video_url))
+        if danmaku.get("ok"):
+            summary = danmaku.get("danmaku_summary") or ""
+            if summary:
+                parts.append(f"【弹幕】\n{summary}")
+        else:
+            logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
+
+        comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
+        if comments.get("ok"):
+            rows = comments.get("comments") or []
+            if rows:
+                lines = [
+                    f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
+                    for c in rows
+                ]
+                parts.append("【热门评论】\n" + "\n".join(lines))
+        else:
+            logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
+
+        if not parts:
+            return None
+        return "\n\n".join(parts)
 
     def _post_process_markdown(
         self,
