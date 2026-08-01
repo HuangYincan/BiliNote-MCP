@@ -36,6 +36,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **语音转写引擎**：默认本地 fast-whisper（问是否要云端 groq/bcut）。**若所选引擎的本地模型未下载就绪**（`get_transcriber_config` 显示 `ready=false`），**必须问用户**：`bilinote-mcp transcriber download <size>` 下载，还是切云端 —— **不要静默切换**；
    - **笔记风格**（必须问）：默认 `detailed`（详细）—— **把真实风格列表呈现给用户、让用户指定一个**：`minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，**或自定义**（问用户想要什么风格，把描述通过 `extras` 传入，如 `extras="笔记风格要求：<用户描述>"`）；**没有明确信息前不要自行默认 `detailed`**；
    - **是否视频理解**（看画面，需多模态模型）：**没有明确信息前必须问** —— 先问是否启用，要则**再问帧间隔秒数**（默认 6，如 3/5/10）；**即使 setup ③ 配了默认，本次也要先问用户**，只有用户说「你定/用默认」才用默认值；`video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`；
+   - **是否整合弹幕、评论区观点**（把 B 站弹幕+评论观点融入笔记）：**没有明确信息前必须问** —— 默认否；要则问**评论条数**（默认 20），`generate_note(..., include_comments=True, comments_limit=<用户给的条数>)`；整合需 **B 站 SESSDATA**（没配引导用户 `bilinote-mcp login bilibili` 扫码，或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；**即使 setup ③ 配了默认，本次也要先问**，只有用户说「你定/用默认」才用默认值；
    - **是否插入图片**：默认否；要则 `screenshot=True` + `format=["screenshot"]`，并问**笔记保存位置**（`notes_dir`，不指定用默认）；
    - **是否后续优化**（生成后基于完整字幕精修）：**必须问** —— 直接问用户「笔记生成后，要不要我再根据完整字幕/转写做后续优化？」**优化的重点是：从字幕里挖出更多细节、把要点展开讲透，同时补齐遗漏、修正不一致、增强结构**；用户说要才做（回答会留到步骤 9 执行）；
    - 用户说「你定」才跳过追问、用默认值。
@@ -44,6 +45,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
    - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
+   - 整合评论/弹幕：加 `include_comments=True, comments_limit=<用户给的条数>`（**需 B 站 SESSDATA**；抓取失败不阻断任务，笔记里跳过该部分即可）。
 6. **轮询**：用**轻量 `get_task_status(task_id)` 快照轮询**，直到 `SUCCESS`（长视频可能要几分钟）。**不要用 `wait_for_note`** —— 它是阻塞调用（单次最多等 timeout 秒），在等待期间会让对话看起来「卡住/挂起」，权限确认也出不来。
 7. **拿到结果后**：`result.markdown` 就是笔记本体。若 `result.note_dir` 存在（用户指定目录或图片模式）：笔记文件在 `{note_dir}/note.md`，图片模式另有 `{note_dir}/Assets/`，**读图以 note_dir 为基准**。若用户指定了 `notes_dir` 但 `note_dir` 缺失，说明没写成文件，告诉用户。**直接阅读 Markdown 回答用户的所有问题** —— 不需要额外检索；若用户追问视频细节，可再读 `result.transcript`（完整转写）定位。
 8. 把笔记呈现给用户（要点总结 + 关键章节 + 原文链接；图片模式告知 note_dir 位置）。
@@ -67,6 +69,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | B站等需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
 | 本地文件 | `generate_note(video_url="/绝对/路径/xxx.mp4", platform="local", ...)` |
 | 视频理解默认（setup ③ 可配） | 用户说「用默认」时 `generate_note` 不传 `video_understanding`/`video_interval` 即自动套用（默认关 / 6s）；显式传入始终覆盖 |
+| 评论/弹幕整合默认（setup ③ 可配） | 用户说「用默认」时 `generate_note` 不传 `include_comments`/`comments_limit` 即自动套用（默认关 / 20条）；显式传入始终覆盖；需 B 站 SESSDATA |
 
 ## 并发与多会话
 
@@ -88,5 +91,6 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 | 任务卡在 `INITIALIZING` | 首次使用 fast-whisper 正在下载模型，耐心等；模型很大时可改用云端转写 |
 | B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 配置 Cookie 后重试 |
 | 想用 B 站 **AI 字幕**跳过语音识别 | 引导用户跑 **`bilinote-mcp login bilibili`**（终端扫码自动获取并保存 SESSDATA），或手动 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`。AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions，关键是 cookie |
+| 整合评论/弹幕时评论拿不到 | 未配 B 站 SESSDATA —— 引导用户 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）后重试；抓取失败**不阻断**笔记生成 |
 | 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
