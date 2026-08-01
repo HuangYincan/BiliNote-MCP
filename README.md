@@ -316,6 +316,45 @@ claude plugin install bilinote@bilinote
 - **`main` 有分支保护**：直接 push 被拒，只接受 PR 合入 —— 保证 `main` 永远可用（`uvx --from git+` 安装直接拉 main）；
 - 稳定安装用 tag：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`（追新去掉 `@v0.1.0`）。
 
+## 开发版（dev 分支尝鲜）
+
+`dev` 分支有未发布的新功能（尝鲜/测试用）。想提前用 dev：
+
+**MCP 工具指 dev**（覆盖插件的 main MCP）：
+
+```bash
+claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
+```
+
+**SKILL 也指 dev**（marketplace 指到 dev 分支）：
+
+```bash
+claude plugin marketplace add HuangYincan/BiliNote-MCP@dev
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+```
+
+重启会话（或 `/reload-plugins`）生效。
+
+**切回 main（稳定版）**：
+
+```bash
+claude mcp remove bilinote                                   # MCP 恢复插件默认（main）
+claude plugin marketplace add HuangYincan/BiliNote-MCP       # marketplace 回 main
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+# /reload-plugins
+```
+
+**CLI 用 dev**（PATH 上的 `bilinote-mcp` 若是 main 固定版）：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp setup`
+
+> **注意**：
+> - dev 与 main **共用数据目录** `~/.local/share/bilinote-mcp/`：LLM key / SESSDATA / 转写配置自动带过来，**不用重配**；但共用同一 SQLite，别两个同时跑任务。
+> - marketplace 指 dev 会**替换**生产 marketplace（不并存），测完记得切回 main。
+> - `git+...@dev` 是 uv/uvx 的分支 ref 语法；不带 ref 的默认安装拉的是 **main**（稳定）。
+> - marketplace 指 dev 只换 **SKILL**；MCP 工具要手动 `@dev` 覆盖（marketplace.json 里的 uvx 无 ref，仍拉 main）。
+> - dev 分支功能未发布，仅尝鲜/测试。
+
 ## 相关
 
 - 上游项目：https://github.com/JefferyHcool/BiliNote

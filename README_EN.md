@@ -309,6 +309,45 @@ Detailed documentation (Chinese) in [docs/](docs/):
 - [User Manual](docs/04-使用手册.md)
 - [Changelog](docs/CHANGELOG.md)
 
+## Development build (dev branch)
+
+The `dev` branch has unreleased features (for early access / testing). To use dev early:
+
+**Point the MCP tools at dev** (overrides the plugin's main MCP):
+
+```bash
+claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
+```
+
+**Point the Skill at dev too** (pin the marketplace to the dev branch):
+
+```bash
+claude plugin marketplace add HuangYincan/BiliNote-MCP@dev
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+```
+
+Restart the session (or `/reload-plugins`) for it to take effect.
+
+**Switch back to main (stable)**:
+
+```bash
+claude mcp remove bilinote                                   # MCP reverts to the plugin default (main)
+claude plugin marketplace add HuangYincan/BiliNote-MCP       # marketplace back to main
+claude plugin disable bilinote@bilinote
+claude plugin install bilinote@bilinote
+# /reload-plugins
+```
+
+**CLI on dev** (if the `bilinote-mcp` on PATH is the pinned main build): `uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp setup`
+
+> **Note**:
+> - dev and main **share the same data directory** `~/.local/share/bilinote-mcp/`: your LLM keys / SESSDATA / transcriber config carry over automatically — **no need to reconfigure**; but they share the same SQLite, so don't run tasks from both at once.
+> - Pointing the marketplace at dev **replaces** your production marketplace (not coexisting) — remember to switch back to main after testing.
+> - `git+...@dev` is the uv/uvx branch-ref syntax; the default install (no ref) pulls **main** (stable).
+> - A dev-pinned marketplace only changes the **Skill**; the MCP tools need the manual `@dev` override (the marketplace.json `uvx` URL has no ref and still pulls main).
+> - dev-branch features are unreleased — for early access / testing only.
+
 ## Related
 
 - Upstream: https://github.com/JefferyHcool/BiliNote
