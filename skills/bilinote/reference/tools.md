@@ -24,6 +24,36 @@
 ### `cancel_note(task_id)`
 - 取消进行中/排队任务（协作式，下一阶段边界生效）；返回 `{ok, task_id, status}`。
 
+## AGENT 直接生成（准备素材）
+
+### `prepare_note_material(video_url, platform?, video_understanding?, video_interval?, grid_size?, include_comments?, comments_limit?)`
+- **只准备素材、不调用配置 LLM**：跑下载 → 转写 →（可选）抽帧 →（可选）评论/弹幕，返回素材包（`kind: "material"`）。
+- 参数与 `generate_note` 对应；不传 `video_understanding` / `video_interval` / `include_comments` / `comments_limit` 时套 setup 默认（视频理解默认关 / 6s，评论默认关 / 20 条）。
+- 返回 `{task_id, status: "PENDING", platform}`；`get_task_status` 轮询到 `SUCCESS` 时 `result` 结构：
+  ```json
+  {
+    "kind": "material",
+    "title": "视频标题",
+    "transcript": {
+      "language": "zh",
+      "full_text": "完整转写全文",
+      "segments": [{"start": 0, "end": 5, "text": "..."}]
+    },
+    "frames": ["file:///绝对/路径/frame_0001.jpg"],
+    "comments_danmaku": {"comments": [...], "danmaku": [...]},
+    "video_path": "/绝对/路径/video.mp4",
+    "audio_path": "/绝对/路径/audio.mp3"
+  }
+  ```
+- 用途：**AGENT 直接生成**（agent_direct）—— AGENT 自己读 `transcript.full_text`、用 Read 看 `frames` 图片、按 `comments_danmaku` 写「观众观点」章节，不经配置 LLM。
+
+## 全自动 / 手动模式
+
+- **任务开始必须先问用户**「全自动」还是「手动」。
+- **全自动**：用 setup 默认参数（默认模型 / `default_style` 默认 detailed / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认关），**不逐个问**；`generate_note` / `prepare_note_material` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。
+- **手动**：逐个确认参数（模型、风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），用户明确指定或说「你定」前不调用生成类工具。
+- 默认值都可由 setup ③ 覆盖；`agent_direct` 默认关（行为与之前一致，即普通 LLM 生成）。
+
 ## 供应商 / 模型
 
 - `list_providers()` —— 供应商列表（key 掩码）。空 key 让用户在终端 `bilinote-mcp providers set <id> --api-key '...'`。
@@ -56,5 +86,7 @@
 | 切云端转写 | `set_transcriber("groq")`（groq key 用 CLI 填） |
 | B 站登录/AI 字幕/评论 | 用户在终端 `bilinote-mcp login bilibili` 扫码（存 SESSDATA）；或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
 | 本地文件 | `generate_note(video_url="/绝对/路径/x.mp4", platform="local", ...)` |
-| 视频理解默认（setup ③） | 用户说「用默认」时不传 `video_understanding`/`video_interval` 即套用（默认关/6s） |
-| 评论/弹幕整合默认（setup ③） | 用户说「用默认」时不传 `include_comments`/`comments_limit` 即套用（默认关/20 条） |
+| 视频理解默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `video_understanding`/`video_interval` 即套用（默认关/6s） |
+| 评论/弹幕整合默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `include_comments`/`comments_limit` 即套用（默认关/20 条） |
+| 笔记默认（setup ③ 新增） | `default_style`（默认 detailed）/ `default_screenshot`（默认关）/ `agent_direct`（默认关，行为与之前一致）；全自动模式不传即套用 |
+| AGENT 直接生成 | `prepare_note_material(video_url, ...)` → 轮询 SUCCESS → 读素材包 → **AGENT 自己写笔记**（不调用配置 LLM） |
