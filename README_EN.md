@@ -331,6 +331,8 @@ claude plugin install bilinote@bilinote
 
 Restart the session (or `/reload-plugins`) for it to take effect.
 
+> **Already pinned to dev and the code changed?** Just run `claude plugin marketplace update bilinote` (pulls the latest dev commit; the `ref: dev` is preserved), then `disable` + `install` — no need to re-run `add @dev`. Only re-run `add ...@dev` if the marketplace was switched back to main.
+
 **Switch back to main (stable)**:
 
 ```bash
