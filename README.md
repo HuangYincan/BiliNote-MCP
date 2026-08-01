@@ -189,6 +189,11 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 
 转写过长（如 2h 视频）时按章节分段精修或让用户指定重点。其余流程（health_check / validate_url / 轮询 / 后续优化）与常规一致。
 
+### 真实端到端使用示例
+
+只给「3 个 B 站链接 + 输出目录」就自动生成三份精修笔记（参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修）：
+见 [`examples/note-generation-example/`](examples/note-generation-example/README.md)（含三份成品笔记 + 完整过程记录）。
+
 ### 手动工具速查（非敏感配置）
 
 | 想做什么 | 用哪个工具 |

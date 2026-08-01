@@ -189,6 +189,11 @@ At the start of a task the agent **asks "Full-auto" or "Manual"**:
 
 If the transcript is very long (e.g. a 2h video), refine section by section or let the user pick a focus. The rest (health_check / validate_url / polling / follow-up optimization) stays the same.
 
+### Real end-to-end usage example
+
+From just "3 Bilibili links + an output directory", a full run auto-generated three refined notes (parameter confirmation → parallel multi-video → video-understanding screenshots → danmaku/comments integration → transcript-based refinement):
+see [`examples/note-generation-example/`](examples/note-generation-example/README.md) (includes the three finished notes and a transcript of the run).
+
 ### Manual tool quick reference (non-sensitive config)
 
 | What you want | Which tool |
