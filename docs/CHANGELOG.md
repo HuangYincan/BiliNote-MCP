@@ -4,6 +4,12 @@
 
 ## 维护（2026-08-01）
 
+- **SKILL 双模式（全自动/手动）+ AGENT 直接生成**：
+  - SKILL 强制规则新增第 0 条：任务开始**必须先问「全自动」还是「手动」** —— 全自动套用 setup 默认（默认模型 / `default_style` / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认）不逐个问；手动逐个确认（现有流程）。「先确认参数」改为依模式而定（手动问 / 全自动用默认）。
+  - 新增**「AGENT 直接生成」分支**（`agent_direct`，默认关）：`prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` 只跑下载→转写→（可选）抽帧→（可选）评论、**不调用配置 LLM**；`get_task_status` 轮询到 SUCCESS 后读素材包（`transcript.full_text` / `frames` / `comments_danmaku`），**AGENT 自己写笔记**（多模态下 Read 看图、问风格、有评论/弹幕时加「观众观点」章节；转写过长按章节分段精修或让用户指定重点）。
+  - 新 MCP 工具 `prepare_note_material`：返回 `{kind:"material", title, transcript:{language, full_text, segments}, frames:[file://...jpg], comments_danmaku, video_path, audio_path}`。
+  - setup ③ 新增 `default_style`（默认 detailed）/ `default_screenshot`（默认关）/ `agent_direct`（默认关）默认；`generate_note` 不传 style/screenshot/video_understanding/include_comments 即套默认。
+  - SKILL / `reference/tools.md` / README（中英）/ docs/04 同步：全自动/手动模式说明 + AGENT 直接生成流程 + `prepare_note_material` 工具参考。
 - **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
 - **修「第二个工具调用挂起」（stderr 管道死锁）+ 并发门禁放宽 + subagent 编排**：
   - **根因**：后台任务大量日志/vendored print 写 stderr，Claude Code 客户端未及时排空 → stderr 管道（~64KB）塞满 → 服务器 logging 持锁阻塞 → 事件循环停 → 后续调用挂起。**修复**：MCP server 启动早期把 stderr 重定向到 `data/logs/mcp_stderr.log`（`os.dup2` + `sys.stderr`），协议只用 stdin/stdout，stderr 进文件不影响；实测修复后 stderr 未排空时第二个调用 0.0s 返回。
