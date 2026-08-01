@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -130,6 +131,7 @@ class NoteGenerator:
         video_interval: int = 0,
         grid_size: Optional[List[int]] = None,
         cancel_event: Optional[threading.Event] = None,
+        material_only: bool = False,
     ) -> NoteResult | None:
         """
         主流程：按步骤依次下载、转写、GPT 总结、截图/链接处理、存库、返回 NoteResult。
@@ -151,6 +153,7 @@ class NoteGenerator:
         :param video_understanding: 是否需要视频拼图理解（生成缩略图）
         :param video_interval: 视频帧截取间隔（秒），仅在 video_understanding 为 True 时生效
         :param grid_size: 生成缩略图时的网格大小，如 [3, 3]
+        :param material_only: 只产出素材包（转写/帧/评论/音视频路径），跳过 LLM 总结与写库，返回 NoteResult.material
         :return: NoteResult 对象，包含 markdown 文本、转写结果和音频元信息
         """
         if grid_size is None:
@@ -163,7 +166,8 @@ class NoteGenerator:
             # 获取下载器与 GPT 实例
 
             downloader = self._get_downloader(platform)
-            gpt = self._get_gpt(model_name, provider_id)
+            # material_only 模式不调用 LLM，也不要求配置 provider/model
+            gpt = None if material_only else self._get_gpt(model_name, provider_id)
             _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             # 缓存文件路径
@@ -241,6 +245,13 @@ class NoteGenerator:
             if include_comments:
                 comments_danmaku = self._fetch_comments_danmaku(video_url, comments_limit)
             _check_cancel(cancel_event)  # 阶段边界：可取消点
+
+            # 3.0 material_only：只组装素材包返回（转写/帧/评论/音视频路径），不调 LLM、不写库
+            if material_only:
+                material = self._build_note_material(task_id, audio_meta, transcript, comments_danmaku)
+                self._update_status(task_id, TaskStatus.SUCCESS)
+                logger.info(f"素材准备完成 (task_id={task_id})")
+                return NoteResult(markdown="", transcript=transcript, audio_meta=audio_meta, material=material)
 
             # 3. GPT 总结
             markdown = self._summarize_text(
@@ -756,6 +767,53 @@ class NoteGenerator:
         if not parts:
             return None
         return "\n\n".join(parts)
+
+    def _build_note_material(
+        self,
+        task_id: Optional[str],
+        audio_meta: AudioDownloadResult,
+        transcript: TranscriptResult,
+        comments_danmaku: Optional[str],
+    ) -> dict:
+        """组装素材包：转写全文+分段、持久化帧图片（file:// 绝对路径）、评论/弹幕、音视频路径。
+
+        material_only 模式的产物，供 AGENT（Claude Code）直接读取素材自行写笔记：
+          - transcript: asdict(TranscriptResult) → {language, full_text, segments: [{start, end, text}]}
+          - frames: self.video_img_urls 是 base64 data URI（VideoReader 临时文件已删），
+            逐张解码写 NOTE_OUTPUT_DIR/{task_id}/frames/frame_{i}.jpg，material 里给 file:// 绝对路径；
+            解码/落盘失败逐张跳过，不阻断整个素材包。
+          - video_path / audio_path: 音视频本地文件路径（可能为 None）。
+        """
+        transcript_dict = asdict(transcript) if transcript else None
+
+        frames: List[str] = []
+        if self.video_img_urls:
+            frames_dir = NOTE_OUTPUT_DIR / str(task_id) / "frames"
+            try:
+                frames_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                logger.warning(f"创建帧目录失败 (task_id={task_id})，跳过帧持久化: {exc}")
+                self.video_img_urls = []  # 目录都建不了，后续逐张必然失败，直接清空
+            for i, data_uri in enumerate(self.video_img_urls, start=1):
+                try:
+                    if isinstance(data_uri, str) and data_uri.startswith("data:image"):
+                        b64 = data_uri.split(",", 1)[1]
+                        frame_path = frames_dir / f"frame_{i}.jpg"
+                        frame_path.write_bytes(base64.b64decode(b64))
+                        frames.append(frame_path.as_uri())
+                    else:
+                        logger.warning(f"跳过非 data URI 帧 (index={i}): {str(data_uri)[:60]}")
+                except Exception as exc:
+                    logger.warning(f"帧 {i} 解码/落盘失败，跳过: {exc}")
+
+        return {
+            "title": audio_meta.title if audio_meta else None,
+            "transcript": transcript_dict,
+            "frames": frames,
+            "comments_danmaku": comments_danmaku,
+            "video_path": str(self.video_path) if self.video_path else None,
+            "audio_path": audio_meta.file_path if audio_meta else None,
+        }
 
     def _post_process_markdown(
         self,
