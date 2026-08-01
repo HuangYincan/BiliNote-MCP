@@ -50,7 +50,7 @@
 ## 全自动 / 手动模式
 
 - **任务开始必须先问用户**「全自动」还是「手动」。
-- **全自动**：用 setup 默认参数（默认模型 / `default_style` 默认 detailed / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认关），**不逐个问**；`generate_note` / `prepare_note_material` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。
+- **全自动**：用 setup 默认解析出**完整参数清单**（生成方式/LLM 模型（或选 AGENT 直接生成 `agent_direct`）/ `default_style` 默认 detailed / 视频理解默认 / 评论默认 / 截图默认 / **生成后是否后续优化**），**一次性列出给用户确认**、不逐个问；用户确认即生成，要改某项再以提问方式改。「AGENT 直接生成」在选 LLM 模型阶段提供（默认用配置 LLM）。`generate_note` / `prepare_note_material` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。
 - **手动**：逐个确认参数（模型、风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），用户明确指定或说「你定」前不调用生成类工具。
 - 默认值都可由 setup ③ 覆盖；`agent_direct` 默认关（行为与之前一致，即普通 LLM 生成）。
 

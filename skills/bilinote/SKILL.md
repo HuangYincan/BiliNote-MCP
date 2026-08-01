@@ -1,6 +1,6 @@
 ---
 name: bilinote
-description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/YouTube/抖音/快手）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。⚠️ 任务开始必须先问「全自动/手动」；手动模式先确认参数（LLM 模型/风格/视频理解/弹幕评论/截图/是否 AGENT 直接生成）再调用 generate_note。
+description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/YouTube/抖音/快手）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。
 ---
 
 # BiliNote-Mcp —— 视频 → AI 笔记
@@ -8,18 +8,26 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
 ## ⚡ 强制规则（违反 = 任务失败，不可跳过）
 
 0. **任务开始必须先问「全自动」还是「手动」**：
-   - **全自动**：套用 setup 默认参数（默认模型 / `default_style` / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认），**不逐个问**；`generate_note` / `prepare_note_material` 不传这些参数即套默认。
+   - **全自动**：用 setup 默认解析出本次任务的**完整参数清单**，**一次性列出给用户确认**（不逐个问；用户要改再以提问方式改）—— 见规则 2。`generate_note` / `prepare_note_material` 不传这些参数即套默认。
    - **手动**：逐个确认参数（见规则 2）后再调用 `generate_note`。
 1. **必须用 MCP 工具**（`generate_note` / `prepare_note_material` / `get_task_status` / `list_providers` / `cancel_note` 等），**不要用 Bash/curl 手工调后端**。唯一例外：让用户在独立终端跑 `bilinote-mcp providers set`（填 key）、`bilinote-mcp login bilibili`（B站扫码）—— 这些本就该在终端做。
 2. **确认参数依模式而定**：
    - **手动模式**：用户明确指定（或说「你定」）之前，禁止调用 `generate_note` / `prepare_note_material`。必须问：
-     - **LLM 模型**：`list_models(provider_id)` 拿到列表 → 呈现给用户选一个；
+     - **LLM 模型**：`list_models(provider_id)` 拿到列表 → 呈现给用户选一个；**或选「AGENT 直接生成」**（`agent_direct`：不用配置 LLM、AGENT 自己写笔记，见强制规则 4；用户要则走工作流分支 A）；
      - **笔记风格**：列出真实 9 种让用户选 —— `minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，或自定义（描述经 `extras` 传入）；
      - **是否视频理解** + 帧间隔秒数（默认 6，需多模态模型）；
      - **是否整合弹幕+评论区观点** + 评论条数（默认 20，需 B 站 SESSDATA，没配引导用户 `bilinote-mcp login bilibili`）；
      - **是否插图片** + 笔记保存位置（`notes_dir`）；
-     - **是否「AGENT 直接生成」**（`agent_direct`）：不走配置 LLM、由 AGENT 自己写笔记（见强制规则 4）。用户要则走工作流分支 A。
-   - **全自动模式**：跳过以上提问，全部用 setup 默认（默认模型 / `default_style` / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认）。
+   - **全自动模式**：不逐个问，但**先用 setup 默认解析出本次任务将用的完整参数清单，一次性列给用户确认**（每项带默认值）：
+     1. **生成方式 / LLM 模型**：默认用配置 LLM 的默认模型（`list_providers()` 有 key 的供应商默认模型）；**或改选「AGENT 直接生成」**（`agent_direct`，不走配置 LLM、AGENT 自己写笔记，见规则 4 / 分支 A）；
+     2. **笔记风格**：`default_style`（默认 detailed，9 种或自定义）；
+     3. **视频理解**：默认关（启用则帧间隔 6s，需多模态模型）；
+     4. **弹幕+评论区观点**：默认关（启用则 20 条，需 SESSDATA）；
+     5. **插图片 + 保存位置**：`default_screenshot`（默认关；启用则确认 `notes_dir`）；
+     6. **生成后是否 AGENT 后续优化**（默认要，见规则 5 精修）。
+     - 用户确认「就用这些 / OK」→ 直接按清单生成；
+     - 用户要改某项 → **再以提问方式**问该项（如「风格改成 academic 吗？」「这次要不要视频理解？」「生成后还优化吗？」）→ 按新值生成；
+     - 用户说「你定」→ 全用清单默认。
 3. **单视频一回合一个；多视频用 subagent 并行**：
    - 单视频：一次 `generate_note`（或 `prepare_note_material`）→ 轮询完成 → 呈现。
    - **多视频（>1 个）：主 agent 对每个视频起一个 subagent**，每个 subagent 独立负责「提交 → `get_task_status` 轮询到 SUCCESS → 汇报」；主 agent 汇总呈现。**主 agent 自己绝不在同一回合连续调用多个 `generate_note` / `prepare_note_material`**。
@@ -29,7 +37,7 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
    2. 读 `result`（素材包）：`transcript.full_text`（完整转写）、`frames`（file:// 图片，多模态模型下用 **Read** 看图）、`comments_danmaku`（评论/弹幕）；
    3. **问笔记风格**（默认 detailed，9 种或自定义）→ **AGENT 自己写 Markdown**；素材包里有 `comments_danmaku` 时，笔记**新增一节「观众观点」**总结观众观点（引用实际内容，不捏造；无可总结写「（无）」）→ 呈现；
    4. 转写可能很长（如 2h 视频超上下文）→ **按章节分段精修**或让用户指定重点。
-5. **生成后必须问是否后续优化**：基于笔记 + 完整字幕/转写精修（从字幕/转写挖更多细节、展开讲透；补齐遗漏、修正不一致、增强结构）。
+5. **生成后是否后续优化**：手动模式**生成后必须问**；全自动模式按参数清单已确认的选择执行（要 → 基于笔记 + 完整字幕/转写精修：从字幕/转写挖更多细节、展开讲透、补齐遗漏、修正不一致、增强结构；不要 → 跳过），不再重复问。
 
 ## 工作流
 
@@ -49,7 +57,7 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
         - 插图片：`screenshot=True, format=["screenshot"]` + `notes_dir="/用户/给的/路径"`。
      2. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）。
      3. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节可读 `result.transcript`。
-6. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **问是否后续优化**（见强制规则 5，要则读笔记 + 转写/字幕精修，原笔记保留对比）→ 若有多个视频，其余由 subagent 各自处理（见强制规则 3），主 agent 收集结果统一呈现。
+6. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **后续优化**（见强制规则 5：手动模式问、全自动模式按清单确认执行；要则读笔记 + 转写/字幕精修，原笔记保留对比）→ 若有多个视频，其余由 subagent 各自处理（见强制规则 3），主 agent 收集结果统一呈现。
 
 ## 参考
 

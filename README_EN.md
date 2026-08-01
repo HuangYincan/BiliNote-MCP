@@ -126,7 +126,7 @@ bilinote-mcp setup        # not on PATH: uvx --from git+https://github.com/Huang
 
 - **① LLM providers**: fill/change a key, change base_url, add a relay/gateway; **per-provider connectivity test (verifies key/base_url), list models, and set a default model** (persisted; used automatically when a note is generated without specifying a model);
 - **② Transcription engine**: pick engine + model size, prompts to download if the local model isn't ready;
-- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**), **comments/danmaku integration defaults** (on/off + comment count, **persisted**; needs a Bilibili SESSDATA), **note defaults** (`default_style` detailed / `default_screenshot` off / `agent_direct` off, **persisted**) — full-auto mode applies these directly.
+- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**), **comments/danmaku integration defaults** (on/off + comment count, **persisted**; needs a Bilibili SESSDATA), **note defaults** (`default_style` detailed / `default_screenshot` off / `agent_direct` off, **persisted**) — full-auto mode applies these (it first lists the full parameter set for your confirmation).
 
 ### Manual CLI (keys never enter the conversation)
 
@@ -178,10 +178,10 @@ Tell the agent "**make notes for this video**" + a link. Standard flow:
 
 At the start of a task the agent **asks "Full-auto" or "Manual"**:
 
-- **Full-auto**: uses the setup ③ defaults directly (default model / `default_style` (detailed) / video-understanding default / comments default / screenshot default / `agent_direct` default off), **without asking one by one**; not passing style / screenshot / video_understanding / include_comments / agent_direct to `generate_note` applies those defaults.
+- **Full-auto**: resolves the **full parameter set** from the setup ③ defaults (generation method / LLM model (or choose AGENT direct generation) / `default_style` (detailed) / video-understanding default / comments default / screenshot default / **whether to do post-generation optimization**) and **lists it once for your confirmation** instead of asking one by one; if you want to change anything it re-asks that item as a question. Once confirmed, not passing style / screenshot / video_understanding / include_comments / agent_direct to `generate_note` applies those defaults. AGENT direct generation is offered at the LLM-model selection step (defaults to the configured LLM).
 - **Manual**: confirms each parameter (LLM model, note style, video understanding, comments/danmaku, screenshots, whether to use AGENT direct generation), then generates.
 
-**AGENT direct generation (`agent_direct`)**: asked in manual mode; in full-auto mode the setup default applies (off). When enabled, the note is **written by the agent itself, not by the configured LLM**:
+**AGENT direct generation (`agent_direct`)**: offered at the **LLM-model selection step** — manual mode asks "which model, or AGENT direct generation?"; full-auto mode defaults to the configured LLM and you can switch it in the parameter list. When enabled, the note is **written by the agent itself, not by the configured LLM**:
 
 1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`;
 2. Poll `get_task_status(task_id)` to `SUCCESS` → get the material package (`result.transcript.full_text` full transcript, `result.frames` sampled frames, `result.comments_danmaku` comments/danmaku);
@@ -215,7 +215,7 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - Samples one frame every `video_interval` seconds, stitches them into a grid, and sends it to the LLM as an inline base64 image;
 - **Requires a multimodal (vision) model**; text-only models like deepseek-chat aren't supported;
 - `grid_size` defaults to `[3, 3]` (`[2, 2]` for `format=["screenshot"]` mode);
-- **Defaults are configurable in setup ③** (default off / 6s): applied automatically when the agent doesn't pass `video_understanding` / `video_interval` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults directly, no per-item questions);
+- **Defaults are configurable in setup ③** (default off / 6s): applied automatically when the agent doesn't pass `video_understanding` / `video_interval` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults (listing the resolved parameter set for confirmation first));
 - To insert **single screenshots** at `*Screenshot-mm:ss` markers, use `format=["screenshot"]` (distinct from the full-frame grid).
 
 ### Advanced: comments & danmaku integration
@@ -232,7 +232,7 @@ generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
 - **Needs a Bilibili SESSDATA** (logged-in state): without it the comments won't be available — run `bilinote-mcp login bilibili` to scan a QR code (or `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`);
 - **A fetch failure does not block the task**: if comments/danmaku can't be retrieved, the note is still generated normally and simply skips that part;
 - To just pull the raw data, use the `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` tools;
-- **Defaults are configurable in setup ③** (default off / 20 comments): applied automatically when the agent doesn't pass `include_comments` / `comments_limit` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults directly, no per-item questions).
+- **Defaults are configurable in setup ③** (default off / 20 comments): applied automatically when the agent doesn't pass `include_comments` / `comments_limit` (in **manual mode** the Skill still asks you first; defaults only apply on "your call"; in **full-auto mode** it applies defaults (listing the resolved parameter set for confirmation first)).
 
 ### Advanced: screenshots (portable notes)
 
