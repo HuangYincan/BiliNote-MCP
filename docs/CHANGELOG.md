@@ -33,6 +33,11 @@
   - 新增 `dev` 分支：日常开发走 dev（功能分支 → PR → dev），dev 稳定后 PR → main 发布。
   - `main` 分支保护：要求 PR + CI 绿 + 1 个 review，直接 push 被拒 → **main 永远可用**。
   - 发布 `v0.1.0`（首个稳定版；稳定安装：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`）。
+- **「评论/弹幕整合」配套（setup CLI / SKILL / docs）**：
+  - 契约：`generate_note` 新增 `include_comments`（是否整合弹幕+评论区观点）/ `comments_limit`（评论条数，默认 20）；`app_config` 新键 `include_comments`(bool, 默认 False) / `comments_limit`(int, 默认 20)；新增独立工具 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`（需 B 站 SESSDATA；抓取失败不阻断笔记）。
+  - setup ③ 新增「评论/弹幕整合默认」（开/关 + 评论条数，`max(1,int)` 异常兜底 20），持久化 `app_config.json`；主菜单 ③ 文案、纯文本兜底向导同步补上。
+  - SKILL「确认参数」新增**必须问**条目：是否整合弹幕、评论区观点 —— 默认否，要则问条数；需 SESSDATA，没配引导 `bilinote-mcp login bilibili` 扫码；**即使 setup 配了默认本次也先问**，只有用户说「你定/用默认」才用默认值；配置要点 / 故障排查表补对应行。
+  - README / README_EN / docs/04（③ 描述、新增「整合弹幕+评论区观点」章节、工具参考补 `fetch_comments`/`fetch_danmaku` 与 `include_comments`/`comments_limit` 参数）同步。
 
 ## 维护（2026-07-31）
 

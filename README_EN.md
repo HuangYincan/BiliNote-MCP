@@ -126,7 +126,7 @@ bilinote-mcp setup        # not on PATH: uvx --from git+https://github.com/Huang
 
 - **① LLM providers**: fill/change a key, change base_url, add a relay/gateway; **per-provider connectivity test (verifies key/base_url), list models, and set a default model** (persisted; used automatically when a note is generated without specifying a model);
 - **② Transcription engine**: pick engine + model size, prompts to download if the local model isn't ready;
-- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**).
+- **③ Other**: platform cookies (dropdown), default notes location (**persisted**), **video understanding defaults** (on/off + frame interval seconds, **persisted**), **comments/danmaku integration defaults** (on/off + comment count, **persisted**; needs a Bilibili SESSDATA).
 
 ### Manual CLI (keys never enter the conversation)
 
@@ -203,6 +203,21 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - **Defaults are configurable in setup ③** (default off / 6s): applied automatically when the agent doesn't pass `video_understanding` / `video_interval` (the Skill still asks you first each time; defaults only apply on "your call");
 - To insert **single screenshots** at `*Screenshot-mm:ss` markers, use `format=["screenshot"]` (distinct from the full-frame grid).
 
+### Advanced: comments & danmaku integration
+
+Want the note to also fold in high-frequency **danmaku** and **comment-section** viewpoints from Bilibili (what's trending in the barrage, what the comments are discussing)? Add to `generate_note`:
+
+```text
+generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
+```
+
+- Folds danmaku + comment-section viewpoints into the note, so it reflects viewer discussion, not just the audio track;
+- `comments_limit` controls how many comments to fetch (default 20);
+- **Needs a Bilibili SESSDATA** (logged-in state): without it the comments won't be available — run `bilinote-mcp login bilibili` to scan a QR code (or `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`);
+- **A fetch failure does not block the task**: if comments/danmaku can't be retrieved, the note is still generated normally and simply skips that part;
+- To just pull the raw data, use the `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` tools;
+- **Defaults are configurable in setup ③** (default off / 20 comments): applied automatically when the agent doesn't pass `include_comments` / `comments_limit` (the Skill still asks you first each time; defaults only apply on "your call").
+
 ### Advanced: screenshots (portable notes)
 
 To include screenshots and keep the note portable, add:
@@ -230,6 +245,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `health_check` | FFmpeg / DB / whisper readiness |
 | `validate_url` | Detect which platform a video link belongs to |
 | `set_downloader_cookie` | Set a platform cookie (e.g. Bilibili) |
+| `fetch_comments` / `fetch_danmaku` | Fetch Bilibili video comments / danmaku (`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`; needs SESSDATA) |
 
 ## Environment variables (optional)
 

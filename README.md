@@ -126,7 +126,7 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 
 - **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
 - **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
-- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）。
+- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）、**评论/弹幕整合默认**（开/关 + 评论条数，**持久化保存**，需 B 站 SESSDATA）。
 
 ### 手动 CLI（key 不进对话）
 
@@ -203,6 +203,21 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（SKILL 仍要求**每次先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值）；
 - 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
 
+### 进阶：整合弹幕+评论区观点
+
+想让笔记把 B 站**弹幕**和**评论区**的高频观点也整理进去（哪些弹幕刷屏、评论区在聊什么），`generate_note` 加：
+
+```text
+generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
+```
+
+- 整合弹幕+评论区观点，让笔记不仅来自音轨，还能反映观众讨论；
+- `comments_limit` 控制抓取的评论条数（默认 20）；
+- **需 B 站 SESSDATA**（登录态）：没配则评论拿不到 —— 先 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；
+- **抓取失败不阻断任务**：拿不到评论/弹幕时笔记照常生成，跳过该部分即可；
+- 只想单独拉数据看，用 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` 两个工具；
+- **默认值可在 setup ③ 配置**（默认关 / 20条）：agent 未显式传 `include_comments` / `comments_limit` 时自动套用（SKILL 仍要求**每次先问用户**本次是否整合，只有用户说「你定/用默认」才用默认值）。
+
 ### 进阶：图片插入（便携笔记）
 
 想让笔记带截图、且能整体搬迁，`generate_note` 加：
@@ -230,6 +245,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
 | `validate_url` | 判断视频链接属于哪个平台 |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
+| `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
 
 ## 环境变量（可选）
 
