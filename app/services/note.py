@@ -35,6 +35,7 @@ from app.transcriber.transcriber_provider import get_transcriber, _transcribers
 from app.utils.note_helper import replace_content_markers, prepend_source_link
 from app.utils.screenshot_marker import extract_screenshot_timestamps
 from app.utils.status_code import StatusCode
+from app.utils.task_manifest import record_task_paths
 from app.utils.video_helper import generate_screenshot
 from app.utils.video_reader import VideoReader
 
@@ -170,6 +171,16 @@ class NoteGenerator:
             audio_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_audio.json"
             transcript_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_transcript.json"
             markdown_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_markdown.md"
+            # 记录主要产物路径到 manifest（尽力而为，失败不阻断生成）
+            record_task_paths(task_id, [
+                audio_cache_file,
+                transcript_cache_file,
+                markdown_cache_file,
+                NOTE_OUTPUT_DIR / f"dl_{task_id}",
+                NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+                NOTE_OUTPUT_DIR / f"{task_id}.json",
+                NOTE_OUTPUT_DIR / f"{task_id}.gpt.checkpoint.json",
+            ])
             # 1. 获取字幕/转写：优先缓存 → 平台字幕 → 音频转写
             transcript = None
 
@@ -292,6 +303,7 @@ class NoteGenerator:
                 _note_dir.mkdir(parents=True, exist_ok=True)
                 (_note_dir / "note.md").write_text(markdown, encoding="utf-8")
                 logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
+                record_task_paths(task_id, [_note_dir, _note_dir / "note.md"])
 
             # 5. 保存记录到数据库
             _check_cancel(cancel_event)  # 阶段边界：可取消点
@@ -472,6 +484,8 @@ class NoteGenerator:
         # 每个任务独立的下载子目录：同一视频并发任务不再写同一个 {video_id}.mp4/.mp3，
         # 下载器/转写器/事件清理都只在自己的 dl_{task_id} 里活动，互不干扰
         dl_dir = output_path or str(NOTE_OUTPUT_DIR / f"dl_{task_id}")
+        # 记录下载目录与音频缓存到 manifest（尽力而为）
+        record_task_paths(task_id, [dl_dir, audio_cache_file])
 
         # 已有缓存，尝试加载
         if audio_cache_file.exists():
@@ -516,6 +530,7 @@ class NoteGenerator:
                 video_path_str = downloader.download_video(video_url, output_dir=dl_dir)
                 self.video_path = Path(video_path_str)
                 logger.info(f"视频下载完成：{self.video_path}")
+                record_task_paths(task_id, [self.video_path])
 
                 if grid_size:
                     self.video_img_urls = VideoReader(
