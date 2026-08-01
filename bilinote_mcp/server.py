@@ -213,7 +213,7 @@ def generate_note(
     model_name: Optional[str] = None,
     format: Optional[List[str]] = None,
     style: Optional[str] = None,
-    screenshot: bool = False,
+    screenshot: Optional[bool] = None,
     link: bool = False,
     video_understanding: Optional[bool] = None,
     video_interval: Optional[int] = None,
@@ -231,11 +231,11 @@ def generate_note(
     - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增）；
     - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型；
     - format: 附加内容，如 ["toc","link","screenshot","summary"]；
-    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；
+    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；不传时用 setup ③ 配置的默认（默认 detailed）；显式传入始终覆盖；
     - extras: 附加到 prompt 末尾的自定义指令（如自定义笔记风格要求）；内置风格用 style，自定义风格用 extras；
     - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论作为参考注入 prompt（仅 B 站视频生效）；不传时用 setup 默认（默认关 / 20 条）；显式传入始终覆盖；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
-    - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；
+    - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；不传时用 setup ③ 配置的默认（默认关）；显式传入始终覆盖；
     - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
 
     返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果；
@@ -276,6 +276,12 @@ def generate_note(
         include_comments = bool(get_app_config().get("include_comments", False))
     if comments_limit is None:
         comments_limit = int(get_app_config().get("comments_limit") or 20)
+
+    # 风格/截图默认：参数没传（None）时用 setup ③ 配置的默认（默认 detailed / 关）
+    if style is None:
+        style = get_app_config().get("default_style") or "detailed"
+    if screenshot is None:
+        screenshot = bool(get_app_config().get("default_screenshot", False))
 
     # 并发上限：最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）—— subagent 并行提交多视频时
     # 按 pool 容量限制，超出则拒绝（避免无界排队）。stderr 管道死锁已修复，并行提交不再挂起。
