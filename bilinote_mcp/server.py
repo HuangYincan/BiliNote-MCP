@@ -138,11 +138,25 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
         if result is None:
             # generate() 内部已写 FAILED 状态
             return
-        payload = {
-            "markdown": result.markdown,
-            "transcript": asdict(result.transcript) if result.transcript else None,
-            "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
-        }
+        material = getattr(result, "material", None)
+        if material:
+            # material_only 模式：不产 markdown，payload 写素材包各字段
+            # （markdown 为空字符串，get_task_status 的 absolutize 分支自动跳过）
+            payload = {
+                "kind": "material",
+                "title": material.get("title"),
+                "transcript": material.get("transcript"),
+                "frames": material.get("frames") or [],
+                "comments_danmaku": material.get("comments_danmaku"),
+                "video_path": material.get("video_path"),
+                "audio_path": material.get("audio_path"),
+            }
+        else:
+            payload = {
+                "markdown": result.markdown,
+                "transcript": asdict(result.transcript) if result.transcript else None,
+                "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
+            }
         # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录（优先 generate() 返回的真实目录）
         note_dir = getattr(result, "note_dir", None)
         if note_dir and (Path(note_dir) / "note.md").exists():
@@ -240,6 +254,8 @@ def generate_note(
 
     返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果；
     SUCCESS 时 result.note_dir 指向便携笔记目录。
+
+    只需素材（转写/帧/评论，不调 LLM 总结）供自行写笔记时，用 prepare_note_material。
     """
     if not provider_id:
         raise ValueError("需要 provider_id（先调用 list_providers 查看，或 add_provider 新增 LLM 供应商）")
@@ -322,6 +338,82 @@ def generate_note(
     logger.info(f"已提交任务 task_id={task_id} platform={platform} model={model_name}")
     return json.dumps(
         {"task_id": task_id, "status": "PENDING", "platform": platform, "model_name": model_name},
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def prepare_note_material(
+    video_url: str,
+    platform: Optional[str] = None,
+    video_understanding: Optional[bool] = None,
+    video_interval: Optional[int] = None,
+    grid_size: Optional[List[int]] = None,
+    include_comments: Optional[bool] = None,
+    comments_limit: Optional[int] = None,
+) -> str:
+    """提交一个视频链接/本地文件，异步产出「素材包」：转写全文+分段、可选视频帧（file:// 图片）、
+    可选 B 站弹幕/评论、音视频本地路径。不调用 LLM 总结，供 AGENT（Claude Code）读取素材自行写笔记。
+
+    - video_url: 必填，B 站/YouTube/抖音/快手链接或本地文件路径；
+    - platform: 可省略，自动识别；
+    - video_understanding / video_interval / grid_size: 是否抽帧 + 截帧间隔（秒）+ 网格大小
+      （如 [3,3]）；默认关（不抽帧）。开启后 result.frames 是持久化帧图片的 file:// 绝对路径；
+    - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论（仅 B 站视频生效；默认关 / 20 条）。
+
+    不需要配置 LLM 供应商/模型。返回 {task_id, status: PENDING, kind: material}。
+    之后用 get_task_status / wait_for_note 查询；SUCCESS 时 result 含
+    {kind: material, title, transcript, frames, comments_danmaku, video_path, audio_path}。
+    需要 AI 生成结构化 Markdown 笔记请用 generate_note。
+    """
+    if platform is None:
+        platform = _detect_platform(video_url)
+    if platform == "local" and not Path(video_url).expanduser().exists():
+        raise ValueError(f"本地文件不存在: {video_url}")
+
+    # 视频理解（抽帧）默认：参数没传（None）时用 setup ③ 配置的默认（默认关 / 0→6s）；
+    # 显式传 False/0/具体秒数仍是显式值，覆盖默认
+    if video_understanding is None:
+        video_understanding = bool(get_app_config().get("video_understanding", False))
+    if video_interval is None:
+        video_interval = int(get_app_config().get("video_interval") or 0)
+
+    # 弹幕/评论默认：参数没传（None）时用 setup 配置的默认（默认关 / 20 条）
+    if include_comments is None:
+        include_comments = bool(get_app_config().get("include_comments", False))
+    if comments_limit is None:
+        comments_limit = int(get_app_config().get("comments_limit") or 20)
+
+    # 并发上限：与 generate_note 一致，最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）
+    with _tasks_lock:
+        active = [tid for tid, f in _task_futures.items() if not f.done()]
+    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    if len(active) >= _max_workers:
+        raise ValueError(
+            f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
+            f"（或 cancel_note 取消）再提交。"
+        )
+
+    task_id = uuid.uuid4().hex
+    _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
+    params = dict(
+        video_url=video_url,
+        platform=platform,
+        material_only=True,
+        include_comments=include_comments,
+        comments_limit=comments_limit,
+        video_understanding=video_understanding,
+        video_interval=video_interval,
+        grid_size=grid_size or [],
+    )
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_note_task, task_id, cancel_event, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
+    logger.info(f"已提交素材任务 task_id={task_id} platform={platform}")
+    return json.dumps(
+        {"task_id": task_id, "status": "PENDING", "kind": "material", "platform": platform},
         ensure_ascii=False,
     )
 
