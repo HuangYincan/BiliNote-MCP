@@ -40,7 +40,7 @@
       "segments": [{"start": 0, "end": 5, "text": "..."}]
     },
     "frames": ["file:///绝对/路径/frame_0001.jpg"],
-    "comments_danmaku": {"comments": [...], "danmaku": [...]},
+    "comments_danmaku": "【弹幕】…\n【热门评论】…",   // 字符串；无则 null
     "video_path": "/绝对/路径/video.mp4",
     "audio_path": "/绝对/路径/audio.mp3"
   }
@@ -53,6 +53,26 @@
 - **全自动**：用 setup 默认参数（默认模型 / `default_style` 默认 detailed / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认关），**不逐个问**；`generate_note` / `prepare_note_material` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。
 - **手动**：逐个确认参数（模型、风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），用户明确指定或说「你定」前不调用生成类工具。
 - 默认值都可由 setup ③ 覆盖；`agent_direct` 默认关（行为与之前一致，即普通 LLM 生成）。
+
+## 清理与存储
+
+任务产生的文件（下载的视频/音频、转写、截图、临时文件）会堆积占存储，AGENT 可自助清理。
+
+### `get_task_files(task_id)`
+- **先查后清**：列出该任务在磁盘上相关的文件/目录，返回 `{task_id, manifest_paths, existing}`。
+- `manifest_paths` 来自 `note_results/{task_id}.manifest.json`（流水线尽力而为记录）；`existing` 是真实存在的文件/目录（含 `dl_{task_id}/`、便携笔记目录等）。
+
+### `cleanup_note(task_id, include_note=False)`
+- 删某任务生成的**中间产物**（下载视频/音频、转写、截图、`dl_{task_id}/`、`{task_id}/Assets` 等）。
+- `include_note=False`（默认）：**保留最终笔记** `note.md` / `note_dir`；
+- `include_note=True`：连最终笔记一起删（含 manifest）。
+- 只删 manifest 记录 / `note_results/{task_id}*` / `dl_{task_id}` 前缀的文件，`resolve()` 校验在数据目录内（防路径穿越）。返回 `{deleted, missing, errors, note_kept}`。
+
+### `cleanup_all(include_config=False, include_models=False)`
+- **全局清理**（恢复出厂）：清空 `note_results/*`、`static/screenshots/*`、`logs/*` 的所有任务产物。
+- `include_config=False`（默认）：**保留** `config/`（LLM key / cookie / 转写设置）；`include_config=True` 才清。
+- `include_models=False`（默认）：**保留** `models/`（已下载模型可复用，重下成本高）；`include_models=True` 才清。
+- 数据库记录（`bili_note.db`）不动。
 
 ## 供应商 / 模型
 

@@ -70,6 +70,7 @@ from app.transcriber import model_download_state as dl_state
 from app.utils.logger import get_logger
 from app.utils.model_status import check_whisper_model_exists, is_downloading
 from app.utils.path_helper import get_model_dir
+from app.utils.task_manifest import cleanup_all_files, cleanup_task_files, list_task_files, record_task_paths
 
 from mcp.server.fastmcp import FastMCP
 
@@ -173,6 +174,12 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
             json.dumps(payload, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
+        # 记录结果/状态 JSON 与下载目录到 manifest（尽力而为，失败不阻断）
+        record_task_paths(task_id, [
+            NOTE_OUTPUT_DIR / f"{task_id}.json",
+            NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+            NOTE_OUTPUT_DIR / f"dl_{task_id}",
+        ])
         logger.info(f"笔记生成成功 task_id={task_id}")
     except TaskCancelledError:
         logger.info(f"任务已取消 task_id={task_id}")
@@ -498,6 +505,42 @@ def cancel_note(task_id: str) -> str:
     _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
     logger.info(f"已取消任务 task_id={task_id}")
     return json.dumps({"ok": True, "task_id": task_id, "status": "CANCELLED"}, ensure_ascii=False)
+
+
+@mcp.tool()
+def get_task_files(task_id: str) -> str:
+    """列出某任务在磁盘上生成的相关文件/目录（manifest 记录 + {task_id}* 前缀扫描）。
+
+    返回 {task_id, manifest_paths, existing}，existing 是真实存在的文件/目录列表。
+    清理前先用它查看该任务占了哪些存储。
+    """
+    return json.dumps(list_task_files(task_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def cleanup_note(task_id: str, include_note: bool = False) -> str:
+    """清理某个任务生成的中间产物（下载的视频/音频、转写、截图、临时文件、dl 目录等）。
+
+    - include_note=False（默认）：保留最终笔记（note.md / note_dir / 便携笔记目录）；
+    - include_note=True：连最终笔记一起删（含 manifest）。
+
+    只删除 manifest 记录 / note_results/{task_id}* / dl_{task_id} 前缀的文件，
+    且 resolve 校验在数据目录内（防路径穿越）。返回 {deleted, missing, errors, note_kept}。
+    """
+    return json.dumps(cleanup_task_files(task_id, include_note=include_note), ensure_ascii=False)
+
+
+@mcp.tool()
+def cleanup_all(include_config: bool = False, include_models: bool = False) -> str:
+    """全局清理（类似恢复出厂）：清空 note_results / static/screenshots / logs 的所有任务产物。
+
+    - include_config=False（默认）：保留 config/（LLM key / cookie / 转写设置）；
+      include_config=True 时连 config/ 一起清；
+    - include_models=False（默认）：保留 models/（已下载模型可复用，重下成本高）；
+      include_models=True 时连 models/ 一起清。
+    数据库记录（bili_note.db）不动。返回各目录清理统计 + 保留项。
+    """
+    return json.dumps(cleanup_all_files(include_config=include_config, include_models=include_models), ensure_ascii=False)
 
 
 @mcp.tool()
