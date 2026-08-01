@@ -126,7 +126,7 @@ bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/
 
 - **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
 - **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
-- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）、**评论/弹幕整合默认**（开/关 + 评论条数，**持久化保存**，需 B 站 SESSDATA）。
+- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）、**评论/弹幕整合默认**（开/关 + 评论条数，**持久化保存**，需 B 站 SESSDATA）、**笔记默认**（`default_style` 默认 detailed / `default_screenshot` 默认关 / `agent_direct` 默认关，**持久化保存**）—— 全自动模式直接套用这些默认。
 
 ### 手动 CLI（key 不进对话）
 
@@ -174,6 +174,21 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG；
 6. **问你是否要根据笔记 + 提取的字幕（`result.transcript`）做后续优化**（补齐细节/修正不一致/增强结构）—— agent 侧精修，不新增工具。
 
+### 全自动 / 手动模式 + AGENT 直接生成
+
+任务开始时 agent **会先问「全自动」还是「手动」**：
+
+- **全自动**：直接用 setup ③ 的默认参数（默认模型 / `default_style`（默认 detailed）/ 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认关），**不逐个问**；`generate_note` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。
+- **手动**：逐个确认参数（LLM 模型、笔记风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），确认完再生成。
+
+**AGENT 直接生成（`agent_direct`）**：手动模式下可问用户要不要；全自动模式用 setup 默认（默认关）。开启后**不走配置的 LLM**，由 agent 自己写笔记：
+
+1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`；
+2. `get_task_status(task_id)` 轮询到 `SUCCESS` → 拿到素材包（`result.transcript.full_text` 完整转写、`result.frames` 抽帧图、`result.comments_danmaku` 评论/弹幕）；
+3. agent 读转写 / 用 Read 看图 → **自己生成 Markdown**（问风格，默认 detailed；有评论/弹幕时笔记含「观众观点」章节）→ 呈现。
+
+转写过长（如 2h 视频）时按章节分段精修或让用户指定重点。其余流程（health_check / validate_url / 轮询 / 后续优化）与常规一致。
+
 ### 手动工具速查（非敏感配置）
 
 | 想做什么 | 用哪个工具 |
@@ -200,7 +215,7 @@ generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
 - 每 `video_interval` 秒抽一帧，按 `grid_size` 拼成网格图，以 base64 内嵌发给 LLM；
 - **需多模态（vision）模型**，deepseek-chat 等纯文本模型不支持；
 - `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
-- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（SKILL 仍要求**每次先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值）；
+- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值；**全自动模式**直接套默认，不逐个问）；
 - 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
 
 ### 进阶：整合弹幕+评论区观点
@@ -217,7 +232,7 @@ generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
 - **需 B 站 SESSDATA**（登录态）：没配则评论拿不到 —— 先 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；
 - **抓取失败不阻断任务**：拿不到评论/弹幕时笔记照常生成，跳过该部分即可；
 - 只想单独拉数据看，用 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` 两个工具；
-- **默认值可在 setup ③ 配置**（默认关 / 20条）：agent 未显式传 `include_comments` / `comments_limit` 时自动套用（SKILL 仍要求**每次先问用户**本次是否整合，只有用户说「你定/用默认」才用默认值）。
+- **默认值可在 setup ③ 配置**（默认关 / 20条）：agent 未显式传 `include_comments` / `comments_limit` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否整合，只有用户说「你定/用默认」才用默认值；**全自动模式**直接套默认，不逐个问）。
 
 ### 进阶：图片插入（便携笔记）
 
@@ -239,6 +254,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | 工具 | 说明 |
 |------|------|
 | `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
+| `prepare_note_material` | 只跑下载/转写/抽帧/评论，**不调用配置 LLM**；返回素材包（`transcript.full_text` / `frames` / `comments_danmaku`），供 AGENT 直接生成笔记（见[全自动 / 手动模式 + AGENT 直接生成](#全自动--手动模式--agent-直接生成)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
 | `cancel_note` | 取消进行中/排队的任务（协作式，下一阶段边界生效） |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
