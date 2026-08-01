@@ -339,6 +339,8 @@ claude plugin install bilinote@bilinote
 
 重启会话（或 `/reload-plugins`）生效。
 
+> **已经 pin 到 dev 后，代码更新了**：只需 `claude plugin marketplace update bilinote`（拉到 dev 最新 commit，`ref: dev` 会保留），再 `disable` + `install`；不用重新 `add @dev`。只有 marketplace 被切回 main 时才需要再 `add ...@dev`。
+
 **切回 main（稳定版）**：
 
 ```bash
