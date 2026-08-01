@@ -5,6 +5,7 @@
 ## 维护（2026-08-01）
 
 - **SKILL 全自动改为「列出完整参数待确认」**：任务开始问「全自动/手动」后，全自动不再静默套默认，而是**先用 setup 默认解析出本次任务将用的完整参数清单一次性列给用户确认**（生成方式/LLM 模型（或选 AGENT 直接生成 `agent_direct`）/ 风格 `default_style` / 视频理解默认 / 评论默认 / 截图默认 / **生成后是否 AGENT 后续优化**）；用户确认即生成，要改某项再以提问方式改，说「你定」用默认。「AGENT 直接生成」改为在**选 LLM 模型阶段**提供（默认用配置 LLM，可选 AGENT 直接生成，不走配置 LLM）。手动模式不变（逐个问）。SKILL.md / reference/tools.md / README（中英）/ docs/04 同步。
+- **README 开发版「从 main 切到 dev」教程补全**：切 dev 的 MCP 命令前加 `claude mcp remove bilinote`（若先前在 main，先移除插件默认 main MCP 再覆盖 dev，同名 `add @dev` 才生效）。README 中英 / docs/04 同步。
 - **SKILL 双模式（全自动/手动）+ AGENT 直接生成**：
   - SKILL 强制规则新增第 0 条：任务开始**必须先问「全自动」还是「手动」** —— 全自动套用 setup 默认（默认模型 / `default_style` / 视频理解默认 / 评论默认 / 截图默认 / `agent_direct` 默认）不逐个问；手动逐个确认（现有流程）。「先确认参数」改为依模式而定（手动问 / 全自动用默认）。
   - 新增**「AGENT 直接生成」分支**（`agent_direct`，默认关）：`prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` 只跑下载→转写→（可选）抽帧→（可选）评论、**不调用配置 LLM**；`get_task_status` 轮询到 SUCCESS 后读素材包（`transcript.full_text` / `frames` / `comments_danmaku`），**AGENT 自己写笔记**（多模态下 Read 看图、问风格、有评论/弹幕时加「观众观点」章节；转写过长按章节分段精修或让用户指定重点）。

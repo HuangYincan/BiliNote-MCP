@@ -348,11 +348,12 @@ claude plugin install bilinote@bilinote
 
 ## 开发版（dev 分支尝鲜）
 
-`dev` 分支有未发布的新功能（尝鲜/测试用）。想提前用 dev：
+`dev` 分支有未发布的新功能（尝鲜/测试用）。想提前用 dev（**从 main 切到 dev**）：
 
 **MCP 工具指 dev**（覆盖插件的 main MCP）：
 
 ```bash
+claude mcp remove bilinote                                 # 如果先前在 main：先移除插件默认的 main MCP，再覆盖成 dev（同名 add 才能生效）
 claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
 ```
 

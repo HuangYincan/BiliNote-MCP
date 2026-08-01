@@ -345,6 +345,7 @@ The `dev` branch has unreleased features (for early access / testing). To use de
 **Point the MCP tools at dev** (overrides the plugin's main MCP):
 
 ```bash
+claude mcp remove bilinote                                 # if previously on main: remove the plugin's default main MCP first, so the same-named add below takes effect
 claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
 ```
 
