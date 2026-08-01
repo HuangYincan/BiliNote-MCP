@@ -22,10 +22,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
-
 from bilinote_mcp.config import get_app_config, setup_environment
-from bilinote_mcp.provider_probe import probe_models
 
 DATA_DIR = setup_environment()
 
@@ -43,6 +40,20 @@ def _print_to_stderr(*args, **kwargs):
 
 
 _builtins.print = _print_to_stderr
+
+# stdio MCP：把 stderr 重定向到日志文件，避免后台任务的大量输出把 stderr 管道塞满、
+# 阻塞事件循环（logging 持锁跨线程阻塞 → 「第二个工具调用挂起」）。协议只用 stdin/stdout。
+try:
+    _stderr_log = open(DATA_DIR / "logs" / "mcp_stderr.log", "a", encoding="utf-8", buffering=1)
+    os.dup2(_stderr_log.fileno(), 2)   # OS 层：子进程（yt-dlp/ffmpeg）的 stderr 也进文件
+    sys.stderr = _stderr_log            # Python 层：logging / vendored print 进文件
+except Exception:
+    pass  # 重定向失败不致命，保持原样
+
+# app.* 相关导入必须在 setup_environment() 之后 —— 否则 BILINOTE_DATA_DIR/CONFIG_DIR 未设置，
+# logger/配置会用 CWD 相对路径建 config/logs（在笔记目录里出现多余文件夹）。
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+from bilinote_mcp.provider_probe import probe_models
 
 # vendored 核心流水线
 from app.db.engine import get_engine
@@ -266,15 +277,15 @@ def generate_note(
     if comments_limit is None:
         comments_limit = int(get_app_config().get("comments_limit") or 20)
 
-    # 强制串行：本会话内同一时刻只允许一个进行中的笔记任务。
-    # 并行提交多个 generate_note 会让 Claude Code 客户端挂起（最后一个响应收不到）——
-    # 这里直接拒绝，要求先 get_task_status/wait_for_note 等上一个完成（或 cancel_note 取消）。
+    # 并发上限：最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）—— subagent 并行提交多视频时
+    # 按 pool 容量限制，超出则拒绝（避免无界排队）。stderr 管道死锁已修复，并行提交不再挂起。
     with _tasks_lock:
         active = [tid for tid, f in _task_futures.items() if not f.done()]
-    if active:
+    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    if len(active) >= _max_workers:
         raise ValueError(
-            f"已有进行中的任务 {active[0]}：请先用 get_task_status / wait_for_note 等它完成"
-            f"（或 cancel_note 取消），再提交下一条。多任务请一次一个、确认一个。"
+            f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
+            f"（或 cancel_note 取消）再提交。多视频建议每个视频起一个 subagent 并行处理。"
         )
 
     task_id = uuid.uuid4().hex

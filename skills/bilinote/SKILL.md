@@ -15,7 +15,10 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
    - **是否整合弹幕+评论区观点** + 评论条数（默认 20，需 B 站 SESSDATA，没配引导用户 `bilinote-mcp login bilibili`）；
    - **是否插图片** + 笔记保存位置（`notes_dir`）。
    - 即使用户在 setup 配了默认，本次也要先问；用户说「你定/用默认」才用默认值。
-3. **每个用户回合最多提交一个视频，提交后等用户确认才下一个**：提交一个 → `get_task_status` 等到 `SUCCESS`/`FAILED`/`CANCELLED` 并**呈现结果** → **问用户「继续下一篇？」**，用户确认后才提交下一个。**绝对不要在同一回合内连续调用多个 `generate_note`** —— Claude Code 客户端对同回合第 2 个 MCP 调用处理不稳会挂起（实测 server 0.04s 就返回，卡的是客户端）；server 有进行中任务时也会直接拒绝。
+3. **单视频一回合一个；多视频用 subagent 并行**：
+   - 单视频：一次 `generate_note` → 轮询完成 → 呈现。
+   - **多视频（>1 个）：主 agent 对每个视频起一个 subagent**，每个 subagent 独立负责「`generate_note` → `get_task_status` 轮询到 SUCCESS → 汇报」；主 agent 汇总呈现。**主 agent 自己绝不在同一回合连续调用多个 `generate_note`**。
+   - 并发上限：最多 `BILINOTE_MAX_WORKERS`（默认 3）个进行中任务，超出 server 会拒绝。
 4. **生成后必须问是否后续优化**：基于笔记 + 完整字幕精修（从字幕挖更多细节、展开讲透；补齐遗漏、修正不一致、增强结构）。
 
 ## 工作流
@@ -30,7 +33,7 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
    - 插图片：`screenshot=True, format=["screenshot"]` + `notes_dir="/用户/给的/路径"`。
 6. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）。
 7. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节可读 `result.transcript`。
-8. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **问是否后续优化**（见强制规则 4，要则读 markdown+transcript 精修，原笔记保留对比）→ 若还有下一个视频，**先问用户「继续下一篇？」**，确认后才回到步骤 1（**同一回合不要再调用 generate_note**）。
+8. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **问是否后续优化**（见强制规则 4，要则读 markdown+transcript 精修，原笔记保留对比）→ 若有多个视频，其余由 subagent 各自处理（见强制规则 3），主 agent 收集结果统一呈现。
 
 ## 参考
 

@@ -5,6 +5,12 @@
 ## 维护（2026-08-01）
 
 - **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
+- **修「第二个工具调用挂起」（stderr 管道死锁）+ 并发门禁放宽 + subagent 编排**：
+  - **根因**：后台任务大量日志/vendored print 写 stderr，Claude Code 客户端未及时排空 → stderr 管道（~64KB）塞满 → 服务器 logging 持锁阻塞 → 事件循环停 → 后续调用挂起。**修复**：MCP server 启动早期把 stderr 重定向到 `data/logs/mcp_stderr.log`（`os.dup2` + `sys.stderr`），协议只用 stdin/stdout，stderr 进文件不影响；实测修复后 stderr 未排空时第二个调用 0.0s 返回。
+  - **并发门禁放宽**：从「有进行中任务就拒绝（强制串行）」改为「最多 `BILINOTE_MAX_WORKERS`（默认 3）个进行中任务，超出拒绝」—— 允许 subagent 并行提交多视频。
+  - **SKILL**：多视频 → 主 agent 对每个视频起一个 subagent（各自 generate_note + 轮询 + 汇报），主 agent 汇总；主 agent 自己不在同一回合连续调用多个 generate_note。
+  - README（中英）/ docs/04 / reference 同步。
+- **修 MCP 在笔记目录泄漏 config/logs**：三个 CWD 相对路径的创建者 —— ① `server.py` 的 `app.*` 导入在 `setup_environment()` 之前（logger 用 `./logs`）；② `ProxyConfigManager` 硬编码 `config/proxy.json`；③ `WhisperModelRegistry` 硬编码 `config/whisper_models.json`。全部改为尊重 `BILINOTE_CONFIG_DIR`/`BILINOTE_DATA_DIR`（`server.py` 导入顺序调整 + 两个 config 管理器默认路径改环境变量），任意 CWD 启动都不再在笔记目录/当前目录冒出空的 config/logs。
 - **笔记文件夹结构（一篇一夹）+ 评论/弹幕可视化**：
   - 指定 `notes_dir` 时每篇笔记一个文件夹 `<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；同名冲突加短 task_id 后缀）—— 多篇互不覆盖；`NoteResult.note_dir` 返回真实子文件夹，server 据此报告位置。
   - `include_comments=True` 时 prompt 强制笔记输出「观众观点」章节（总结弹幕/评论区反复出现的观点、补充、纠错；无可总结写「（无）」）—— 之前只是「仅供参考」喂 LLM，笔记里不可见。

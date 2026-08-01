@@ -12,7 +12,11 @@ class ProxyConfigManager:
     这样桌面端/web 用户在设置页填，docker/服务器部署用环境变量兜底。
     """
 
-    def __init__(self, filepath: str = "config/proxy.json"):
+    def __init__(self, filepath: Optional[str] = None):
+        # 默认落在 BILINOTE_CONFIG_DIR（MCP/CLI 由 setup_environment 设置），避免 CWD 相对路径
+        # 在笔记目录等任意 CWD 里冒出空的 config/ 文件夹
+        if filepath is None:
+            filepath = str(Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "proxy.json")
         self.path = Path(filepath)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 

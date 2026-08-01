@@ -16,12 +16,12 @@
 | 整合评论/弹幕时评论拿不到 | 未配 B 站 SESSDATA —— 引导用户 `bilinote-mcp login bilibili`；抓取失败**不阻断**笔记生成（跳过该部分） |
 | 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
-| `generate_note` 报「已有进行中的任务」 | 正常 —— 任务一次只发一个：先 `get_task_status`/`wait_for_note` 等上一个完成（或 `cancel_note` 取消）再提交 |
+| `generate_note` 报「已有 N 个进行中任务（上限 M）」 | 并发已达上限 —— 等其中一些完成（或 `cancel_note` 取消）再提交；多视频用 subagent 并行 |
 
 ## 并发与多会话
 
 - 每个会话独立起一个 MCP server 进程，任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**。
-- **本会话内任务强制串行**：`generate_note` 有进行中任务时**直接拒绝** —— 必须一次一个：提交 → 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个。**每个用户回合最多提交一个视频，提交后呈现结果、问用户「继续？」再提下一个** —— 不要在同一回合/同一消息里连续调用多个 `generate_note`（Claude Code 客户端对同回合第 2 个 MCP 调用处理不稳会挂起，实测 server 0.04s 返回、卡的是客户端）。
+- **本会话内并发上限 `BILINOTE_MAX_WORKERS`（默认 3）**：`generate_note` 在超出上限时会**拒绝**（防止无界排队）。**多视频用 subagent 并行**：每个 subagent 负责一个视频（generate_note → get_task_status 轮询 → 汇报），主 agent 汇总。**主 agent 自己不要在同一回合连续调用多个 `generate_note`**。
 - **真正并行**：开多个会话。
 - **轮询**：用轻量 `get_task_status(task_id)` 快照轮询；**不要**用阻塞的 `wait_for_note`（会卡住当前轮次，看起来像挂起）。
 - 提交前把计划告诉用户（如「我会依次提交 p10/p11/p12，每个完成后提交下一个」）。
