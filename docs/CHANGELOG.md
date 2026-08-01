@@ -27,6 +27,12 @@
   - README / docs/04（工具参考补 `extras`）同步。
 - **SKILL 并发流程修正（一次发一个，服务端并发）**：实测证明 MCP server 对并行 `generate_note` 全部 0.01s 返回（3 个并行毫秒级完成），**卡的是 Claude Code 客户端** —— 同一条消息塞多个并行 MCP 工具调用时，最后一个调用的响应收不到、任务也未提交（用户实测 3 集只提交成功 2 集）。修正：**一次发一个 `generate_note`**（拿 task_id 再发下一个），任务照常在服务端并发执行（`BILINOTE_MAX_WORKERS=3`）；多任务轮询用轻量 `get_task_status` 快照轮询，不用阻塞的 `wait_for_note`。提交前先告诉用户要依次提交哪些任务。README / docs/04 同步。
 - **SKILL 后续优化强调「挖细节、讲透」**：优化执行改为以字幕/转写为权威源 —— **从里面挖出笔记没覆盖的细节、把每个要点展开讲透**（补充背景/原因/步骤/例子/关键数据与结论）；同时**保留原有的「补齐遗漏、修正不一致、增强结构」**三元组。
+- **CI + 分支保护 + 版本发布**：
+  - 新增 `.github/workflows/ci.yml`：push `main`/`dev` 或 PR 时跑冒烟（`uv sync` + server import + MCP tools/list + CLI），防止坏 commit 上线（`uvx --from git+` 安装直接拉 main，CI 是门禁）。
+  - 新增 `.github/workflows/release.yml`：push `v*` tag 自动建 GitHub Release（**tag 驱动发布**）。
+  - 新增 `dev` 分支：日常开发走 dev（功能分支 → PR → dev），dev 稳定后 PR → main 发布。
+  - `main` 分支保护：要求 PR + CI 绿 + 1 个 review，直接 push 被拒 → **main 永远可用**。
+  - 发布 `v0.1.0`（首个稳定版；稳定安装：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`）。
 
 ## 维护（2026-07-31）
 

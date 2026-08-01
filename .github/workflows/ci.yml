@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        run: uv sync --no-dev --frozen
+      - name: Server imports
+        run: uv run python -c "import bilinote_mcp.server; print('import OK')"
+      - name: MCP tools/list over stdio
+        run: |
+          uv run python - <<'EOF'
+          import asyncio
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def main():
+              params = StdioServerParameters(command="uv", args=["run", "bilinote-mcp"])
+              async with stdio_client(params) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      tools = await session.list_tools()
+                      names = [t.name for t in tools.tools]
+                      assert "generate_note" in names, f"missing generate_note: {names}"
+                      print(f"tools/list OK: {len(names)} tools")
+          asyncio.run(main())
+          EOF
+      - name: CLI smoke
+        run: uv run bilinote-mcp providers list

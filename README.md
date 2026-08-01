@@ -293,6 +293,13 @@ claude plugin install bilinote@bilinote
 - [使用手册](docs/04-使用手册.md)
 - [更新日志](docs/CHANGELOG.md)
 
+## 开发流程
+
+- **日常开发在 `dev` 分支**：功能分支 → PR → `dev`（CI 必须绿）；
+- **发布**：`dev` 稳定后 → PR `dev` → `main`（CI + review 通过才合）→ 打 `vX.Y.Z` tag → [Release workflow](.github/workflows/release.yml) 自动发 GitHub Release；
+- **`main` 有分支保护**：直接 push 被拒，只接受 PR 合入 —— 保证 `main` 永远可用（`uvx --from git+` 安装直接拉 main）；
+- 稳定安装用 tag：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`（追新去掉 `@v0.1.0`）。
+
 ## 相关
 
 - 上游项目：https://github.com/JefferyHcool/BiliNote
