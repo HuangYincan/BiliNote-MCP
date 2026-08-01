@@ -21,7 +21,7 @@ note_styles = [
 
 
 # 生成 BASE_PROMPT 函数
-def generate_base_prompt(title, segment_text, tags, _format=None, style=None, extras=None):
+def generate_base_prompt(title, segment_text, tags, _format=None, style=None, extras=None, comments_danmaku=None):
     # 生成 Base Prompt 开头部分
     prompt = BASE_PROMPT.format(
         video_title=title,
@@ -40,6 +40,14 @@ def generate_base_prompt(title, segment_text, tags, _format=None, style=None, ex
     # 添加额外内容
     if extras:
         prompt += f"\n{extras}"
+
+    # 添加观众评论与弹幕（仅供参考，可引用其中观点）
+    if comments_danmaku:
+        prompt += (
+            "\n\n===== 观众评论与弹幕（仅供参考，可引用其中观点）=====\n"
+            f"{comments_danmaku}\n"
+            "===== 评论与弹幕结束 ====="
+        )
     return prompt
 
 
