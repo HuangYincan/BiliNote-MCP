@@ -170,7 +170,7 @@ Tell the agent "**make notes for this video**" + a link. Standard flow:
 1. `health_check` — confirms FFmpeg / DB are ready;
 2. `list_providers` — confirms a provider with key=set (masked); if none, configure via CLI first;
 3. `generate_note(video_url=..., provider_id=..., model_name=...)` — get `task_id`;
-4. `get_task_status(task_id)` **lightweight snapshot polling** until `SUCCESS` (use it for multi-task parallelism — don't use the blocking `wait_for_note`);
+4. `get_task_status(task_id)` **lightweight snapshot polling** until `SUCCESS`/`FAILED`/`CANCELLED` (**submit one task at a time** — the server rejects new submissions while a task is running; don't batch multiple `generate_note` calls);
 5. Once you have `result.markdown`, **the agent reads the Markdown itself and answers your questions** — no extra RAG needed;
 6. **Ask whether to do a follow-up optimization** based on the note + extracted subtitles (`result.transcript`) — agent-side refinement, no new tool.
 
@@ -238,6 +238,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 |------|------|
 | `generate_note` | Submit a video URL, async note generation, returns task_id (supports video understanding + screenshot portable notes + `extras` custom style) |
 | `get_task_status` / `wait_for_note` | Poll task progress / blocking wait for the final Markdown |
+| `cancel_note` | Cancel a running/queued task (cooperative; takes effect at the next phase boundary) |
 | `list_providers` / `add_provider` / `update_provider` | View (masked) / add / update providers (fill keys via CLI) |
 | `list_models` / `add_model` | View (live/DB fallback) / manually add models |
 | `get_transcriber_config` / `set_transcriber` | View / switch transcription engine (local whisper ↔ cloud groq) |
@@ -258,7 +259,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_MAX_WORKERS` | **Concurrent note tasks** per MCP session | 3 |
 | `HF_ENDPOINT` | HuggingFace mirror (for slow downloads in China) | Official `https://huggingface.co`; use `https://hf-mirror.com` in China |
 
-**Multi-session parallelism**: each Claude Code session runs its own MCP server process; note tasks are isolated by `task_id` — **multiple sessions can generate notes for different videos in parallel** (up to `BILINOTE_MAX_WORKERS` concurrent tasks per session, executed server-side). **Note**: the Claude Code client handles "multiple parallel MCP tool calls in one message" unreliably (the last response can hang and its task may never submit) — **submit one `generate_note` at a time** (get the task_id, then the next); the tasks still run concurrently server-side. **Poll multiple tasks with lightweight `get_task_status(task_id)` snapshot polling**; `wait_for_note` is blocking and can make the conversation look stuck when used concurrently. Also: whisper/MLX transcription is CPU/memory heavy; too many parallel sessions can saturate the machine; all sessions share one SQLite DB, so extreme concurrency can occasionally cause write conflicts.
+**Serialized per session + parallel across sessions**: each Claude Code session runs its own MCP server process. **Within a session, note tasks are force-serialized** — `generate_note` **rejects** new submissions while a task is running (submit one → poll `get_task_status`/`wait_for_note` to `SUCCESS`/`FAILED`/`CANCELLED` → submit the next); **multiple sessions** can each generate notes for different videos in parallel. **Note**: the Claude Code client handles "multiple parallel MCP tool calls in one message" unreliably (the last response can hang) — so don't batch multiple `generate_note` calls in one message even across tasks. **Poll with lightweight `get_task_status(task_id)` snapshot polling**; `wait_for_note` is blocking and can make the conversation look stuck. Cancel a running task with `cancel_note(task_id)`. Also: whisper/MLX transcription is CPU/memory heavy; too many parallel sessions can saturate the machine; all sessions share one SQLite DB, so extreme concurrency can occasionally cause write conflicts.
 
 ## Updating
 

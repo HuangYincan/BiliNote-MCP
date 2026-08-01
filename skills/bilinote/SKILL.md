@@ -41,7 +41,7 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
    - **是否后续优化**（生成后基于完整字幕精修）：**必须问** —— 直接问用户「笔记生成后，要不要我再根据完整字幕/转写做后续优化？」**优化的重点是：从字幕里挖出更多细节、把要点展开讲透，同时补齐遗漏、修正不一致、增强结构**；用户说要才做（回答会留到步骤 9 执行）；
    - 用户说「你定」才跳过追问、用默认值。
 5. **`generate_note(video_url=url, provider_id=..., model_name=<用户选的>, style=..., quality="medium", ...)`** —— 提交任务，拿到 `task_id`。
-   - **⚠ 多任务时一次只发一个 `generate_note`（绝对不要把多个放进同一条消息并行调用）**：Claude Code 客户端对并行 MCP 工具调用不稳，最后一个会卡死、收不到响应、任务也没提交（实测 3 个并行只提交成功 2 个）。正确做法：**发一个 → 拿到 task_id → 再发下一个**；几秒内全部提交完，任务在服务端并发执行（不损失并行）。
+   - **⚠ 任务一次只发一个，必须等上一个完成**：`generate_note` 现在**强制串行** —— 已有进行中的任务时 server 会**直接拒绝**（报「已有进行中的任务 … 请先等它完成」）。正确做法：**发一个 → `get_task_status`/`wait_for_note` 轮询到 `SUCCESS`/`FAILED`/`CANCELLED` → 再发下一个**。**绝对不要在同一消息里并行塞多个 `generate_note`**（Claude Code 客户端会挂起、最后一个响应收不到）；多任务请一次一个、确认一个。
    - **用户指定了保存目录**：加 `notes_dir="/用户/给的/路径"` —— note.md 会直接写到那里（即使不插图片）；
    - 图片插入：加 `screenshot=True, format=["screenshot"]`（产出便携笔记 `note_dir/note.md` + `Assets/`，相对引用）；
    - 视频理解：加 `video_understanding=True, video_interval=<用户给的秒数>, grid_size=[3,3]`（**必须多模态模型**，如 `qwen-vl-plus` / `gpt-4o`；deepseek-chat 等纯文本模型不支持）。
@@ -74,10 +74,10 @@ description: 使用 BiliNote-Mcp 的 MCP 工具把视频链接（B站/YouTube/�
 ## 并发与多会话
 
 - 每个会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离，**多个会话可并行生成不同视频的笔记**，互不干扰。
-- **任务并发是支持的**：一次提交多个任务后，它们在**服务端后台并发执行**（`BILINOTE_MAX_WORKERS=3`），互不阻塞（实测 3 个并行 `generate_note` server 全部 0.01s 返回）。
-- **⚠ 但不要在同一条消息里塞多个 `generate_note` 并行调用**：Claude Code 客户端对并行 MCP 工具调用处理不稳 —— 最后一个调用的响应会一直收不到（server 秒回，卡的是客户端，任务也没真正提交）。**一次发一个 `generate_note`**：发一个 → 拿到 task_id → 再发下一个；几秒内全部提交完，这些任务**照常在服务端并发执行**，不损失并行。
-- **多任务轮询务必用轻量 `get_task_status(task_id)` 快照轮询**（每个 task_id 各查一次，不阻塞）；**不要用 `wait_for_note`** —— 它是阻塞调用（单次最多等 timeout 秒），多个并发时会卡住当前轮次，让对话看起来「挂起」。要「等完成」，就 get_task_status 轮几次，每次之间正常对话。
-- 提交前把计划告诉用户（如「我会依次提交 p10/p11/p12 三个分集，各拿到 task_id 后一起轮询」），用户同意再提交。
+- **⚠ 本会话内任务强制串行**：`generate_note` 在已有进行中任务时会**直接拒绝**（报「已有进行中的任务 …」）—— **必须一次一个**：发一个 → `get_task_status`/`wait_for_note` 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个。**绝对不要在同一消息里并行塞多个 `generate_note`**（Claude Code 客户端会挂起、最后一个响应收不到）。多任务就是「提交 → 等完成 → 提交 → 等完成」。
+- **真正并行**：开多个会话（每会话一个独立 MCP 进程）。
+- **多任务轮询务必用轻量 `get_task_status(task_id)` 快照轮询**（每次拿一次状态，不阻塞）；**不要用 `wait_for_note` 阻塞等** —— 它会卡住当前轮次，让对话看起来「挂起」。要「等完成」，就 get_task_status 轮几次，每次之间正常对话。
+- 提交前把计划告诉用户（如「我会依次提交 p10/p11/p12 三个分集，每个完成后提交下一个」），用户同意再提交。
 - 注意资源：whisper / MLX 转写吃 CPU/内存，太多会话并行会卡顿；所有会话共用同一个数据库，极端并发偶发写冲突。
 
 ## 故障排查

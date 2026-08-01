@@ -14,12 +14,15 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
 
 from bilinote_mcp.config import get_app_config, setup_environment
 from bilinote_mcp.provider_probe import probe_models
@@ -82,6 +85,11 @@ mcp = FastMCP("bilinote")
 
 _pool = ThreadPoolExecutor(max_workers=int(os.environ.get("BILINOTE_MAX_WORKERS", "3")))
 
+# 任务注册表：task_id -> (Future, cancel_event)，供 cancel_note 使用（thread-safe）
+_tasks_lock = threading.Lock()
+_task_futures: Dict[str, Future] = {}
+_task_events: Dict[str, threading.Event] = {}
+
 
 def _write_status(task_id: str, status, message: Optional[str] = None) -> None:
     """写入 {task_id}.status.json（与上游 NoteGenerator._update_status 兼容）。"""
@@ -109,12 +117,13 @@ def _absolutize_images(markdown: Optional[str]) -> str:
     return re.sub(r"\]\(/?(static/screenshots/[^)]+)\)", _repl, markdown)
 
 
-def _run_note_task(task_id: str, **params) -> None:
+def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None, **params) -> None:
     """在后台线程执行 NoteGenerator.generate，并落盘最终结果。"""
-    _write_status(task_id, "INITIALIZING", message="正在准备…")
     try:
+        _check_cancel(cancel_event)  # 排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING
+        _write_status(task_id, "INITIALIZING", message="正在准备…")
         generator = NoteGenerator()
-        result = generator.generate(task_id=task_id, **params)
+        result = generator.generate(task_id=task_id, cancel_event=cancel_event, **params)
         if result is None:
             # generate() 内部已写 FAILED 状态
             return
@@ -137,9 +146,16 @@ def _run_note_task(task_id: str, **params) -> None:
             encoding="utf-8",
         )
         logger.info(f"笔记生成成功 task_id={task_id}")
+    except TaskCancelledError:
+        logger.info(f"任务已取消 task_id={task_id}")
+        _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
     except Exception as e:
         logger.error(f"任务异常 task_id={task_id}: {e}", exc_info=True)
         _write_status(task_id, TaskStatus.FAILED, message=str(e))
+    finally:
+        with _tasks_lock:
+            _task_futures.pop(task_id, None)
+            _task_events.pop(task_id, None)
 
 
 def _detect_platform(url: str) -> str:
@@ -247,6 +263,17 @@ def generate_note(
     if comments_limit is None:
         comments_limit = int(get_app_config().get("comments_limit") or 20)
 
+    # 强制串行：本会话内同一时刻只允许一个进行中的笔记任务。
+    # 并行提交多个 generate_note 会让 Claude Code 客户端挂起（最后一个响应收不到）——
+    # 这里直接拒绝，要求先 get_task_status/wait_for_note 等上一个完成（或 cancel_note 取消）。
+    with _tasks_lock:
+        active = [tid for tid, f in _task_futures.items() if not f.done()]
+    if active:
+        raise ValueError(
+            f"已有进行中的任务 {active[0]}：请先用 get_task_status / wait_for_note 等它完成"
+            f"（或 cancel_note 取消），再提交下一条。多任务请一次一个、确认一个。"
+        )
+
     task_id = uuid.uuid4().hex
     _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
     params = dict(
@@ -267,7 +294,11 @@ def generate_note(
         grid_size=grid_size or [],
         notes_dir=notes_dir or get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or None,
     )
-    _pool.submit(_run_note_task, task_id, **params)
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_note_task, task_id, cancel_event, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
     logger.info(f"已提交任务 task_id={task_id} platform={platform} model={model_name}")
     return json.dumps(
         {"task_id": task_id, "status": "PENDING", "platform": platform, "model_name": model_name},
@@ -320,7 +351,7 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
     deadline = time.time() + max(1, timeout)
     while time.time() < deadline:
         resp = json.loads(get_task_status(task_id))
-        if resp["status"] in ("SUCCESS", "FAILED"):
+        if resp["status"] in ("SUCCESS", "FAILED", "CANCELLED"):
             return json.dumps(resp, ensure_ascii=False)
         time.sleep(max(1, poll_interval))
     return json.dumps(
@@ -332,6 +363,29 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
         },
         ensure_ascii=False,
     )
+
+
+@mcp.tool()
+def cancel_note(task_id: str) -> str:
+    """取消一个进行中/排队的笔记生成任务（协作式：在下一阶段边界生效，LLM 总结时每 chunk 检查）。
+
+    返回 {ok, task_id, status, message?}。
+    """
+    with _tasks_lock:
+        future = _task_futures.get(task_id)
+        event = _task_events.get(task_id)
+    if event is None:
+        return json.dumps(
+            {"ok": False, "task_id": task_id, "status": "NOT_FOUND", "message": "任务不存在或已结束"},
+            ensure_ascii=False,
+        )
+    # 排队中：future.cancel() 可释放 worker 槽；运行中：靠 event 协作式停止（下一阶段边界）
+    if future is not None and not future.done():
+        future.cancel()
+    event.set()
+    _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
+    logger.info(f"已取消任务 task_id={task_id}")
+    return json.dumps({"ok": True, "task_id": task_id, "status": "CANCELLED"}, ensure_ascii=False)
 
 
 @mcp.tool()

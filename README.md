@@ -170,7 +170,7 @@ bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA�
 1. `health_check` —— 确认 FFmpeg / 数据库就绪；
 2. `list_providers` —— 确认供应商 key=已填（看不到明文）；没有就先用 CLI 配；
 3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
-4. `get_task_status(task_id)` **轻量快照轮询**，等到 `SUCCESS`（多任务并行时务必用它，不要用阻塞的 `wait_for_note`）；
+4. `get_task_status(task_id)` **轻量快照轮询**，等到 `SUCCESS`/`FAILED`/`CANCELLED`（**任务一次只发一个**，server 有进行中任务时会拒绝新提交；不要并行塞多个 `generate_note`）；
 5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG；
 6. **问你是否要根据笔记 + 提取的字幕（`result.transcript`）做后续优化**（补齐细节/修正不一致/增强结构）—— agent 侧精修，不新增工具。
 
@@ -238,6 +238,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 |------|------|
 | `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
+| `cancel_note` | 取消进行中/排队的任务（协作式，下一阶段边界生效） |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
 | `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
 | `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
@@ -258,7 +259,7 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
 | `HF_ENDPOINT` | HuggingFace 镜像（国内下载慢/卡时用） | 官方 `https://huggingface.co`；国内可 `https://hf-mirror.com` |
 
-**多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程，笔记任务按 `task_id` 隔离 —— **多个会话可并行生成不同视频的笔记**（各会话内最多 `BILINOTE_MAX_WORKERS` 个并发任务，任务在服务端后台并发执行）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— **要一次跑多个任务，请一次发一个 `generate_note`**（拿 task_id 再发下一个），任务照常在服务端并发跑。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，多任务并发时会让对话看起来卡住。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
+**会话内串行 + 多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程。**本会话内任务强制串行** —— `generate_note` 在已有进行中任务时会**直接拒绝**（必须一次一个：提交 → 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个）；**多个会话**可各自并行生成不同视频的笔记（互不干扰）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— 所以即使跨任务，也**不要在同一消息里并行塞多个 `generate_note`**。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，会卡住当前轮次。需要取消进行中任务用 `cancel_note(task_id)`。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
 
 ## 更新
 

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, Any
@@ -58,6 +59,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+
+
 class NoteGenerator:
     """
     NoteGenerator 用于执行视频/音频下载、转写、GPT 生成笔记、插入截图/链接、
@@ -100,6 +104,7 @@ class NoteGenerator:
         video_understanding: bool = False,
         video_interval: int = 0,
         grid_size: Optional[List[int]] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> NoteResult | None:
         """
         主流程：按步骤依次下载、转写、GPT 总结、截图/链接处理、存库、返回 NoteResult。
@@ -134,6 +139,7 @@ class NoteGenerator:
 
             downloader = self._get_downloader(platform)
             gpt = self._get_gpt(model_name, provider_id)
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             # 缓存文件路径
             audio_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_audio.json"
@@ -209,6 +215,7 @@ class NoteGenerator:
             comments_danmaku = None
             if include_comments:
                 comments_danmaku = self._fetch_comments_danmaku(video_url, comments_limit)
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             # 3. GPT 总结
             markdown = self._summarize_text(
@@ -223,6 +230,7 @@ class NoteGenerator:
                 extras=extras,
                 video_img_urls=self.video_img_urls,
                 comments_danmaku=comments_danmaku,
+                cancel_event=cancel_event,
             )
 
             # 4. 截图 & 链接替换
@@ -244,6 +252,7 @@ class NoteGenerator:
                     platform=platform,
                     assets_dir=assets_dir,
                 )
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
 
             markdown = prepend_source_link(markdown, str(video_url))
 
@@ -254,6 +263,7 @@ class NoteGenerator:
                 logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
 
             # 5. 保存记录到数据库
+            _check_cancel(cancel_event)  # 阶段边界：可取消点
             self._update_status(task_id, TaskStatus.SAVING)
             self._save_metadata(video_id=audio_meta.video_id, platform=platform, task_id=task_id)
 
@@ -262,6 +272,8 @@ class NoteGenerator:
             logger.info(f"笔记生成成功 (task_id={task_id})")
             return NoteResult(markdown=markdown, transcript=transcript, audio_meta=audio_meta)
 
+        except TaskCancelledError:
+            raise  # 取消要透传给上层（MCP 层写 CANCELLED），不能转成 FAILED
         except Exception as exc:
             logger.error(f"生成笔记流程异常 (task_id={task_id})：{exc}", exc_info=True)
             self._update_status(task_id, TaskStatus.FAILED, message=str(exc))
@@ -615,6 +627,7 @@ class NoteGenerator:
         extras: Optional[str],
         video_img_urls: List[str],
         comments_danmaku: Optional[str] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> str | None:
         """
         调用 GPT 对转写结果进行总结，生成 Markdown 文本并缓存。
@@ -650,7 +663,7 @@ class NoteGenerator:
         )
 
         try:
-            markdown = gpt.summarize(source)
+            markdown = gpt.summarize(source, cancel_event=cancel_event)
             markdown_cache_file.write_text(markdown, encoding="utf-8")
             logger.info(f"GPT 总结并缓存成功 ({markdown_cache_file})")
             return markdown

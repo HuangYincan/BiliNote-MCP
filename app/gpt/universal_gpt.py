@@ -1,9 +1,11 @@
 from app.gpt.base import GPT
 from app.gpt.prompt_builder import generate_base_prompt
 from app.models.gpt_model import GPTSource
+from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
 import os
 import hashlib
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +15,7 @@ from app.gpt.utils import fix_markdown
 from app.gpt.request_chunker import RequestChunker
 from app.models.transcriber_model import TranscriptSegment
 from datetime import timedelta
-from typing import List
+from typing import List, Optional
 
 
 class UniversalGPT(GPT):
@@ -270,7 +272,7 @@ class UniversalGPT(GPT):
 
         return current_partials[0]
 
-    def summarize(self, source: GPTSource) -> str:
+    def summarize(self, source: GPTSource, cancel_event: Optional[threading.Event] = None) -> str:
         self.screenshot = source.screenshot
         self.link = source.link
         source.segment = self.ensure_segments_type(source.segment)
@@ -318,6 +320,7 @@ class UniversalGPT(GPT):
             partials = []
 
         for offset, chunk in enumerate(chunks[len(partials):]):
+            _check_cancel(cancel_event)  # 每 chunk 前检查取消（LLM 循环内灵敏取消）
             # 评论/弹幕只出现在第一个 chunk（尚未生成任何 partial 时），
             # 其余 chunk 传 None，避免大数据在多个 chunk 重复而爆 token
             chunk_comments = comments_danmaku if (len(partials) == 0 and offset == 0) else None

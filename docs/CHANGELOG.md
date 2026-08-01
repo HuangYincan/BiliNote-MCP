@@ -5,6 +5,11 @@
 ## 维护（2026-08-01）
 
 - **README/docs 增补「开发版（dev 分支尝鲜）」**：dev 版安装（MCP `@dev` 覆盖 + marketplace 指 dev）与 main↔dev 切换/恢复命令、CLI 用 dev、共用数据目录等注意事项。README 中英 / docs/04 同步。
+- **MCP 取消任务 + 强制串行**：
+  - 新增 `cancel_note(task_id)` 工具：取消进行中/排队任务（协作式 —— `threading.Event`，任务在各阶段边界 + LLM chunk 循环检查；排队任务可 `Future.cancel()` 释放 worker 槽）。`TaskStatus` 加 `CANCELLED`；`wait_for_note` 终止状态含 `CANCELLED`（不再空转超时）。
+  - **`generate_note` 强制串行**：同一会话有进行中任务时**直接拒绝**新提交（并行提交多个 `generate_note` 会让 Claude Code 客户端挂起）—— 必须一次一个：提交 → 等到 SUCCESS/FAILED/CANCELLED → 再提交下一个；真正并行请开多个会话。
+  - SKILL/README（中英）/docs/04 同步：串行 + cancel_note 说明。
+  - 取消异常/助手独立到 `app/exceptions/task.py`（避免 note→gpt_factory→universal_gpt→note 循环导入）。
 
 - **setup 向导 LLM 配置：连通性检测 + 默认模型**：
   - 供应商改为「管理」子菜单：✏ 编辑 key/base_url / 🔌 检测连接 → 列出可用模型 → 设默认 / ← 返回（选中供应商进入，非再点即编辑）。
