@@ -11,8 +11,11 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)]()
 [![MCP](https://img.shields.io/badge/MCP-Server-6C5CE7)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-D97757)]()
+[![BiliNote-MCP MCP server](https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP/badges/score.svg)](https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP)
 
 </div>
+
+<p align="center"><a href="https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP"><img src="https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP/badges/card.svg" alt="BiliNote-MCP MCP server" width="600"></a></p>
 
 📦 Repository: [HuangYincan/BiliNote-MCP](https://github.com/HuangYincan/BiliNote-MCP)
 
