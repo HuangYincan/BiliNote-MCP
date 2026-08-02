@@ -226,17 +226,25 @@ def fetch_comments_danmaku(video_url: str, comments_limit: int = 20) -> Optional
 # ---------------- 步骤 5：LLM 总结（吃素材包） ----------------
 
 def _frames_to_data_uris(frames: Optional[List[str]]) -> List[str]:
-    """把素材包里的 file:// 帧路径转成 base64 data URI（GPTSource.video_img_urls 用）。"""
+    """把素材包里的帧转成 base64 data URI（GPTSource.video_img_urls 用）。
+
+    兼容两种输入：已是 `data:image/...` 的 data URI（如 generate 内部的 video_img_urls）直接透传；
+    `file://` 绝对路径则读文件转 base64。
+    """
     if not frames:
         return []
     uris: List[str] = []
     for f in frames:
         try:
-            p = Path(f)
-            if str(f).startswith("file://"):
+            s = str(f)
+            if s.startswith("data:image"):
+                uris.append(s)  # 已是 data URI，直接透传
+                continue
+            p = Path(s)
+            if s.startswith("file://"):
                 from urllib.parse import urlparse
 
-                p = Path(urlparse(str(f)).path)
+                p = Path(urlparse(s).path)
             if not p.exists():
                 logger.warning(f"帧文件不存在，跳过: {f}")
                 continue
