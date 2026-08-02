@@ -261,15 +261,17 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - **指定了 `notes_dir` 时，每篇笔记一个文件夹**：`<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；冲突自动加短 task_id 后缀）—— 即使不插图片也会写文件（适合「生成笔记到某文件夹」，且多篇互不覆盖）；
 - 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
 
-### 进阶：清理与存储（cleanup）
+### 进阶：存储结构与清理
 
-任务产生的文件（下载的视频/音频、转写、截图、临时文件）会堆积占存储。AGENT 可自助清理：
+**每任务一个文件夹** `note_results/{task_id}/`：`raw/`（下载媒体）+ `gen/`（转写/笔记/帧/导出）+ 控制文件。**全局任务索引**在 SQLite `video_tasks` 表（含语义标题/状态/简介）。
 
-- **先查后清**：`get_task_files(task_id)` —— 列出该任务在磁盘上相关的文件/目录（manifest 记录 + `{task_id}*` 前缀扫描），返回 `{task_id, manifest_paths, existing}`。
-- **按任务清理**：`cleanup_note(task_id, include_note=False)` —— 删该任务中间产物（视频/音频/转写/截图/`dl_{task_id}/`），**默认保留最终笔记** `note.md`；`include_note=True` 连笔记一起删。
-- **全局清理（恢复出厂）**：`cleanup_all(include_config=False, include_models=False)` —— 清空 `note_results/*`、`static/screenshots/*`、`logs/*`；**默认保留** `config/`（LLM key / cookie / 转写设置）与 `models/`（模型可复用、重下成本高），`include_config=True` / `include_models=True` 才一起清。数据库记录（`bili_note.db`）不动。
+清理（agent 工具或 setup ④ 数据管理）：
 
-安全：只删 manifest 记录 / 明确前缀模式的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计。
+- **先查后清**：`list_tasks()` 枚举全部任务（带标题）→ `get_task_files(task_id)` 看单任务占用。
+- **按任务清理**：`cleanup_note(task_id, include_note=False)` —— 以任务文件夹为边界；`include_note=False` 删 `raw/` + `gen/` 内非笔记（**保留最终笔记**），`include_note=True` 删整个任务夹 + 全局索引。
+- **全局清理（恢复出厂）**：`cleanup_all(include_config=False, include_models=False)` —— 清空 `note_results/*`、`static/screenshots/*`、`logs/*` + 清空全局索引；**默认保留** `config/` 与 `models/`。
+
+安全：以任务文件夹为边界，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计。
 
 ### 进阶：输出格式（多格式导出）
 
@@ -305,7 +307,8 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `validate_url` | 判断视频链接属于哪个平台；内置 5 平台之外返回 `{supported:true, platform:"generic"}`（yt-dlp 通用提取） |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
 | `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
-| `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[清理与存储](#进阶清理与存储cleanup) |
+| `list_tasks` | 列出全部任务（全局索引，带语义标题/状态），供 Agent 枚举与识别任务 |
+| `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[存储结构与清理](#进阶存储结构与清理) |
 | `export_transcript` | 把任务转写导出为**确定性格式**（srt/vtt/json，不耗 LLM），返回文件路径；思维导图/闪卡/LaTeX 等创意格式由 Agent 基于底稿生成（见[输出格式](#进阶输出格式)） |
 | `merge_audio` | 把多个音频/视频文件合并为 16kHz mono wav（FFmpeg concat），再转写/总结（见[音频增强](#进阶音频增强)） |
 | `diarize_media` | 说话人分离（pyannote 可选重依赖，需 HF_TOKEN + 授权），返回说话人时间段 |

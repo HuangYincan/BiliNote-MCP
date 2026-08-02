@@ -2,6 +2,18 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-02 · 数据层重构：任务索引 + 语义标题 + raw/gen 隔离）
+
+- **每任务一个文件夹（raw/gen 隔离）**：产物从扁平散落（`dl_{task_id}/`、`{task_id}.json`、`{task_id}_transcript.json` 等）重构为 `note_results/{task_id}/` 统一结构——`raw/`（下载媒体/字幕/封面）+ `gen/`（`transcript.json` / `note.md` / `Assets/` 截图 / `frames/` 帧 / 导出 srt·vtt·json）+ `status.json` / `result.json` / `manifest.json` 控制文件。note.py 落盘路径、server 读取点（`get_task_status`/`export_transcript`/`_run_note_task`/`_run_step_task`）、extract_frames save_dir、checkpoint 取舍全部适配。
+- **全局任务索引（SQLite `video_tasks` 表扩展）**：加 `title/status/summary/note_dir` 列；`init_db` 用 `PRAGMA table_info` + `ALTER TABLE` 幂等迁移（兼容旧库）；DAO 重构（`insert_video_task` upsert、`update_task_status`、`list_tasks`、`delete_task`）；**修复 material 模式任务不写库的 bug**。
+- **语义标题/简介**：`_save_metadata` 捕获 `_extract_note_title(markdown) or audio_meta.title` 作 title、转写前 200 字作 summary，写入全局索引；`get_task_status` result 补 `title`。
+- **新 MCP 工具 `list_tasks()`**（工具 29 → **30**）：查全局索引返回 `[{task_id, title, status, summary, platform, created_at, note_dir}]`——Agent 据此枚举任务、按语义标题识别。
+- **cleanup 适配新结构**：`task_manifest` 以任务文件夹为边界——`cleanup_note(include_note=False)` 删 `raw/` + `gen/` 内非笔记（保留 note.md + 控制文件），`include_note=True` 删整个任务夹 + 全局索引；`cleanup_all` 同步清空全局索引；新增 `record_task_meta`/`get_task_meta`。
+- **setup ④ 数据管理**：向导加「④ 数据管理」——列任务（task_id | 标题 | 状态）、清理单任务（确认保留/连笔记）、全局清理；纯文本兜底同步。
+- **测试**：`test_task_manifest`/`test_material_mode` 适配 task_dir 新结构；新增 `test_task_index`（迁移/DAO/list_tasks，隔离 DB）。全量回归绿（80 单测 + test_material_mode）。
+- **文档**：docs/04（存储结构与清理 + 工具表）、README 中英（存储章节 + list_tasks 工具表）、SKILL reference/tools.md（任务索引与清理章节）、CHANGELOG 同步。
+- **明确不做**：不迁移历史数据（旧扁平文件保留不读，`cleanup_all` 可清）；checkpoint 临时恢复文件暂留扁平层（成功即删，非最终产物）。
+
 ## 维护（2026-08-02 · FunASR 中文引擎）
 
 - **FunASR Paraformer-zh 中文转写引擎**（可选重依赖）：新增 `app/transcriber/funasr_transcriber.py` —— `AutoModel(model="paraformer-zh", vad_model="fsmn-vad", punc_model="ct-punc")` 一个 pipeline 端到端输出**带标点**的中文文本 + VAD 段落时间轴（`sentence_info` 毫秒→秒映射为 `TranscriptSegment`）。中文质量优于 faster-whisper（Paraformer-zh WER ~8.4%）。**惰性加载**：模块顶层不 import funasr，未装时抛 RuntimeError 安装指引（复用 mlx/pyannote 可选依赖模式）。
