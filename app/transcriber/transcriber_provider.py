@@ -17,6 +17,7 @@ class TranscriberType(str, Enum):
     BCUT = "bcut"
     KUAISHOU = "kuaishou"
     GROQ = "groq"
+    FUNASR = "funasr"
 
 # 在 Apple 平台尝试导入 MLX Whisper（不再依赖环境变量，支持前端动态切换）
 MLX_WHISPER_AVAILABLE = False
@@ -37,6 +38,7 @@ _transcribers = {
     TranscriberType.BCUT: None,
     TranscriberType.KUAISHOU: None,
     TranscriberType.GROQ: None,
+    TranscriberType.FUNASR: None,
 }
 
 # 构造单例的锁：并发首个任务同时首次加载 whisper 模型时，只允许一个线程真正构造
@@ -77,6 +79,10 @@ def get_mlx_whisper_transcriber(model_size="base"):
         logger.warning("MLX Whisper 不可用，请确保在 Apple 平台且已安装 mlx_whisper")
         raise ImportError("MLX Whisper 不可用")
     return _init_transcriber(TranscriberType.MLX_WHISPER, MLXWhisperTranscriber, model_size=model_size)
+
+def get_funasr_transcriber(device="cpu"):
+    from app.transcriber.funasr_transcriber import FunASRTranscriber
+    return _init_transcriber(TranscriberType.FUNASR, FunASRTranscriber, device=device)
 
 # 通用入口
 def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="cuda"):
@@ -121,6 +127,9 @@ def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="
 
     elif transcriber_enum == TranscriberType.GROQ:
         return get_groq_transcriber()
+
+    elif transcriber_enum == TranscriberType.FUNASR:
+        return get_funasr_transcriber(device=device)
 
     # fallback
     logger.warning(f'未识别转录器类型 "{transcriber_type}"，使用 fast-whisper 作为默认')

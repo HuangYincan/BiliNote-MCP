@@ -109,11 +109,22 @@ class TranscriberConfigManager:
             "downloading": False,
             "reason": "",
         }
-        if ttype not in ("fast-whisper", "mlx-whisper"):
+        if ttype not in ("fast-whisper", "mlx-whisper", "funasr"):
             return result  # 在线引擎无需本地模型
 
         # 先确认运行环境装了对应包（模型文件在 ≠ 引擎能 import；如 mlx_whisper 是可选依赖）
         import importlib.util
+
+        if ttype == "funasr":
+            if importlib.util.find_spec("funasr") is None:
+                result["ready"] = False
+                result["reason"] = (
+                    "funasr 不可用：未安装 funasr 包。请用 "
+                    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with funasr --with torch`"
+                    "（或 `uvx --from ... --with funasr --with torch`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                )
+                return result
+            return result  # funasr 模型由引擎首次构造时自动下载，无需预检模型文件
 
         pkg = "mlx_whisper" if ttype == "mlx-whisper" else "faster_whisper"
         if importlib.util.find_spec(pkg) is None:

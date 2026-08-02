@@ -43,6 +43,8 @@ mlx = ["mlx-whisper"]
 preprocess = ["noisereduce", "scipy"]
 # 说话人分离（可选，重依赖：torch + pyannote + HF_TOKEN + 模型授权）
 diarization = ["pyannote.audio>=3.1", "torch", "torchaudio"]
+# 中文转写（可选，重依赖：torch + funasr，Paraformer-zh + VAD + 标点）
+funasr = ["funasr", "torch"]
 
 [project.scripts]
 bilinote-mcp = "bilinote_mcp.cli:main"

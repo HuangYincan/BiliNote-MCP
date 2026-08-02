@@ -393,6 +393,7 @@ def _wizard_transcriber(inq) -> None:
                 ("bcut", "bcut（云端）"),
                 ("kuaishou", "kuaishou（云端）"),
                 ("mlx-whisper", "mlx-whisper（仅 macOS，GPU）"),
+                ("funasr", "funasr（中文最优，VAD+标点）"),
             ):
                 # 注意：InquirerPy 选择项 name 里不能嵌 ANSI 转义码（会原样显示），用纯文本
                 if val == cur_engine:
@@ -526,6 +527,19 @@ def _wizard_transcriber(inq) -> None:
             else:
                 TranscriberConfigManager().update_config(pick)
                 print(f"{_GREEN}✓ 已切换 {pick}{_RESET}", file=sys.stdout)
+                if pick == "funasr":
+                    import importlib.util
+
+                    if importlib.util.find_spec("funasr") is None:
+                        print(
+                            f"{_YELLOW}⚠ 当前环境未装 funasr（可选重依赖）。{_RESET}",
+                            file=sys.stdout,
+                        )
+                        print(
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                            f"--with funasr --with torch`，或用 `uvx --from ... --with funasr --with torch` 运行。{_RESET}",
+                            file=sys.stdout,
+                        )
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
 
@@ -756,15 +770,20 @@ def _setup_cli_fallback() -> None:
             print(f"   ✓ 已新增 → id={new_id}", file=sys.stdout)
 
     print("\n② 语音转写引擎：", file=sys.stdout)
-    print("   1) fast-whisper  2) groq  3) bcut  4) kuaishou  5) mlx-whisper", file=sys.stdout)
-    t = _ask("   选择 [1-5]", default="1")
-    engines = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
-    eng = engines[int(t) - 1] if t.isdigit() and 1 <= int(t) <= 5 else "fast-whisper"
+    print("   1) fast-whisper  2) groq  3) bcut  4) kuaishou  5) mlx-whisper  6) funasr（中文最优，VAD+标点）", file=sys.stdout)
+    t = _ask("   选择 [1-6]", default="1")
+    engines = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper", "funasr")
+    eng = engines[int(t) - 1] if t.isdigit() and 1 <= int(t) <= 6 else "fast-whisper"
     size = None
     if eng in ("fast-whisper", "mlx-whisper"):
         size = _ask("   模型尺寸（tiny/base/small/medium/large-v3/large-v3-turbo）", default="small")
         if size not in _WHISPER_SIZES:
             size = "small"
+    if eng == "funasr":
+        import importlib.util
+
+        if importlib.util.find_spec("funasr") is None:
+            print("   ⚠ 未装 funasr：`uvx --from ... --with funasr --with torch` 安装", file=sys.stdout)
     TranscriberConfigManager().update_config(eng, size)
     print(f"   ✓ 已切换 {eng} / {size}", file=sys.stdout)
     if eng == "fast-whisper" and _ask(f"   下载 whisper-{size}？[y/N]", default="N").lower() == "y":
@@ -937,7 +956,7 @@ def _providers_cli(argv) -> None:
         print(f"已新增 {opts.name} → id={new_id}", file=sys.stdout)
 
 
-_TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
+_TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper", "funasr")
 
 
 def _transcriber_cli(argv) -> None:
