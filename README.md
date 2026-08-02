@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/cover-dark.png"/>
-    <img src="assets/cover-light.png" alt="VideoNote-Mcp" width="800"/>
+    <img src="assets/cover-light.png" alt="VideoNote-Mcp"/>
   </picture>
 </p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
@@ -24,6 +24,7 @@
   <a href="#-如何贡献">🤝 如何贡献</a> •
   <a href="#-致谢">🙏 致谢</a>
 </p>
+
 
 ---
 
