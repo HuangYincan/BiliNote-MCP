@@ -4,7 +4,7 @@
 
 ## 维护（2026-08-02 · 重命名 VideoNote-Mcp）
 
-- **全面重命名**：项目从旧名更名为 **VideoNote-Mcp** —— Python 包 `videonote_mcp`、CLI 命令 `videonote`、Skill `skills/videonote`、环境变量 `VIDEONOTE_*`、数据目录 `~/.local/share/videonote`、数据库 `video_note.db`、GitHub 仓库 `HuangYincan/VideoNote-MCP`；旧命名体系（`*_mcp` / `-mcp` / `*_NOTE_*` 前缀等）全部替换为 `videonote*`。本条目为文档侧记录，代码侧重命名由并行工作完成。
+- **全面重命名**：项目从旧名更名为 **VideoNote-Mcp** —— Python 包 `videonote_mcp`、CLI 命令 `videonote`、Skill `skills/videonote`、环境变量 `VIDEONOTE_*`、数据目录 `~/.local/share/videonote-mcp`、数据库 `video_note.db`、GitHub 仓库 `HuangYincan/VideoNote-MCP`；旧命名体系（`*_mcp` / `-mcp` / `*_NOTE_*` 前缀等）全部替换为 `videonote*`。本条目为文档侧记录，代码侧重命名由并行工作完成。
 - **README 模板化重构**：`README.md` / `README_EN.md` 中英按「流水线地图模板」重写 —— 顶部首图占位 + H1/tagline/语言切换 + 锚点 TOC；9 个流水线阶段（0 端到端 → 8 任务管理）各一节（职责段 + 工具表）；新增「流水线地图」总览表、最佳实践、贡献、致谢。
 - **docs 归档**：安装（4 种方式）/ 配置 / 使用 / **环境变量表** / **更新** / **安全（API Key）** 等完整说明归档进 `docs/04-使用手册.md`，README 只保留概览与快速开始；`docs/02-架构设计.md` / `docs/03-预期效果.md` / `docs/00-文档索引.md` / `docs/01-目的与背景.md` 旧名引用全部清除并保持中立表述。
 - **示例同步**：`examples/note-generation-example/README.md` 品牌、命令（`videonote`）、Skill 路径（`skills/videonote`）、仓库 URL（`HuangYincan/VideoNote-MCP`）同步更新。
@@ -172,7 +172,7 @@
 - **修复打包 bug**：`.gitignore` 的 `models/`/`data/` 无锚点规则误伤 `app/models/`、`app/db/models/`（wheel 缺失，仅本地 editable 安装可用）→ 改为根锚定 `/models/` `/data/`；`pyproject` 加 `requires-python <3.14` 上界（av/faster-whisper 无 3.14 wheel）、wheel 改用 `include` glob。
 - 支持 **`uvx --from git+URL` 一键安装**：`claude mcp add videonote -- uvx --from git+https://github.com/HuangYincan/VideoNote-MCP videonote`（已验证，14 个工具全部可用）。
 - README 增加「方式一：Claude 命令一行安装」。
-- **修复安装后的数据目录 bug**：`videonote_mcp/config.py` 区分「源码 checkout（用仓库 data/）」「已安装包（用 `~/.local/share/videonote`，不写 site-packages）」；`path_helper.py` 的 `get_data_dir/get_model_dir/get_app_dir` 尊重 `VIDEONOTE_DATA_DIR/VIDEONOTE_MODEL_DIR` 环境变量，并修复上游 `get_data_dir` 返回 `data/data` 的 bug。
+- **修复安装后的数据目录 bug**：`videonote_mcp/config.py` 区分「源码 checkout（用仓库 data/）」「已安装包（用 `~/.local/share/videonote-mcp`，不写 site-packages）」；`path_helper.py` 的 `get_data_dir/get_model_dir/get_app_dir` 尊重 `VIDEONOTE_DATA_DIR/VIDEONOTE_MODEL_DIR` 环境变量，并修复上游 `get_data_dir` 返回 `data/data` 的 bug。
 - **安装方式定稿**（实测耗时对比）：`uvx`（缓存命中 ~8s、新版 commit ~20s）**自动更新，推荐**；`uv tool install`（~1s 直接启动）固定版本、启动最快。README 以 `uvx` 为方式一。
 - README 补充「使用说明」（agent 工作流 + 配置速查）与「Skill」章节（安装、触发方式）。
 - **新增 plugin marketplace**：`.claude-plugin/marketplace.json`（Skill + MCP server 一起分发）。安装一条命令：
