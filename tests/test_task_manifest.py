@@ -15,8 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 数据层重构：cleanup_all_files 会同步清空 video_tasks 全局索引 → 用隔离 DB
-os.environ["DATABASE_URL"] = "sqlite:////tmp/videonote_test_task_manifest.db"
+# 数据层重构：cleanup_all_files 会同步清空 video_tasks 全局索引 → 用隔离 DB。
+# 与会话级 conftest 同库（全量 pytest 时 conftest 已设，setdefault 不覆盖）；
+# 直接 `python tests/test_task_manifest.py` 时 conftest 不加载，setdefault 兜底。
+os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/videonote_pytest/video_note.db")
 
 from app.utils.task_manifest import (  # noqa: E402
     cleanup_all_files,
@@ -148,10 +150,11 @@ class TaskManifestTest(unittest.TestCase):
         res = cleanup_task_files(tid, include_note=False)
         # raw 整个被删
         self.assertFalse(raw.exists())
-        # gen 内非 note.md 被删（transcript/Assets/frames）
+        # gen 内非 note.md 被删（transcript/frames）
         self.assertFalse((gen / "transcript.json").exists())
-        self.assertFalse((gen / "Assets").exists())
         self.assertFalse((gen / "frames").exists())
+        # Assets/ 是 note.md 相对引用（Assets/...）的截图，保留笔记时必须保留
+        self.assertTrue((gen / "Assets").exists())
         # 最终笔记保留
         self.assertTrue((gen / "note.md").exists())
         self.assertTrue(res["note_kept"])

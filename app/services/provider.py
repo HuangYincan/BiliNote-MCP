@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from app.db.models.providers import Provider
 from app.db.provider_dao import (
@@ -64,9 +65,14 @@ class ProviderService:
         }
     @staticmethod
     def mask_key(key: str) -> str:
-        if not key or len(key) < 8:
-            return '*' * len(key)
-        return key[:4] + '*' * (len(key) - 8) + key[-4:]
+        # 固定首尾显式位数、中间全掩码，避免 len==8 时 `'*'*0` 整条泄露
+        if not key:
+            return ''
+        n = len(key)
+        if n <= 4:
+            return '*' * n
+        head, tail = (2, 2) if n < 16 else (4, 4)
+        return key[:head] + '*' * (n - head - tail) + key[-tail:]
     @staticmethod
     def add_provider( name: str, api_key: str, base_url: str, logo: str, type_: str, enabled: int = 1):
         try:
@@ -126,9 +132,9 @@ class ProviderService:
             # all_models.extend(provider['models'])
 
     @staticmethod
-    def update_provider(id: str, data: dict)->str | None:
+    def update_provider(id: str, data: dict) -> Optional[dict]:
         try:
-        # 过滤掉空值
+            # 过滤掉空值
             filtered_data = {k: v for k, v in data.items() if v is not None and k != 'id'}
             # 防御掩码污染：前端展示时 api_key 被 mask_key() 处理过（如 a92f****...2d3a），
             # 如果用户未重新输入直接保存，带星号的值不应覆盖原 key。
@@ -141,11 +147,12 @@ class ProviderService:
             }
             print('更新模型供应商', _log_data)
             update_provider(id, **filtered_data)
-            # 获取更新后的供应商信息
+            # 获取更新后的供应商信息：get_provider_by_id 是模块级导入的 DAO，
+            # 返回 ORM 对象，用属性访问（.get 反而会 AttributeError）
             updated_provider = get_provider_by_id(id)
             return {
                 'id': id,
-                'enabled': updated_provider.enabled,
+                'enabled': updated_provider.enabled if updated_provider else None,
             }
 
         except Exception as e:

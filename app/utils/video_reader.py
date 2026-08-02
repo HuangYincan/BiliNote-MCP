@@ -51,7 +51,9 @@ class VideoReader:
         return f"{mm:02d}_{ss:02d}"
 
     def extract_time_from_filename(self, filename: str) -> float:
-        match = re.search(r"frame_(\d{2})_(\d{2})\.jpg", filename)
+        # \d+ 分钟位：≥100 分钟视频的帧名是 frame_120_00.jpg（旧 \d{2} 只匹配 2 位，
+        # 会把 120 误配成 20 → 排序/时间戳错乱）
+        match = re.search(r"frame_(\d+)_(\d{2})\.jpg", filename)
         if match:
             mm, ss = map(int, match.groups())
             return mm * 60 + ss
@@ -64,7 +66,7 @@ class VideoReader:
         cmd = ["ffmpeg", "-ss", str(ts), "-i", self.video_path, "-frames:v", "1", "-q:v", "2", "-y", output_path,
                "-hide_banner", "-loglevel", "error"]
         try:
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, timeout=120)
             return output_path
         except subprocess.CalledProcessError:
             return None
@@ -76,8 +78,8 @@ class VideoReader:
             duration = float(ffmpeg.probe(self.video_path)["format"]["duration"])
             timestamps = [i for i in range(0, int(duration), self.frame_interval)][:max_frames]
 
-            # 并行提取帧
-            max_workers = min(os.cpu_count() or 4, 8, len(timestamps))
+            # 并行提取帧；len(timestamps)==0（极短/损坏视频）时也要 ≥1，否则 ThreadPoolExecutor(0) 崩溃
+            max_workers = max(1, min(os.cpu_count() or 4, 8, len(timestamps)))
             frame_results: dict[int, str | None] = {}
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {pool.submit(self._extract_single_frame, ts): ts for ts in timestamps}
@@ -120,7 +122,7 @@ class VideoReader:
 
         for path in image_paths:
             img = Image.open(path).convert("RGB").resize((self.unit_width, self.unit_height), Image.Resampling.LANCZOS)
-            timestamp = re.search(r"frame_(\d{2})_(\d{2})\.jpg", os.path.basename(path))
+            timestamp = re.search(r"frame_(\d+)_(\d{2})\.jpg", os.path.basename(path))
             time_text = f"{timestamp.group(1)}:{timestamp.group(2)}" if timestamp else ""
             draw = ImageDraw.Draw(img)
             draw.text((10, 10), time_text, fill="yellow", font=font, stroke_width=1, stroke_fill="black")

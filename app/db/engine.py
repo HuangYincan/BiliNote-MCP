@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
@@ -11,7 +11,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///video_note.db")
 # SQLite 需要特定连接参数，其他数据库不需要
 engine_args = {}
 if DATABASE_URL.startswith("sqlite"):
-    engine_args["connect_args"] = {"check_same_thread": False}
+    engine_args["connect_args"] = {
+        "check_same_thread": False,
+        # 连接级 busy timeout（秒）：MCP 多线程并发写（任务索引/provider 更新）
+        # 时避免立刻抛 "database is locked"
+        "timeout": 30,
+    }
 
 _pool_args = {}
 if not DATABASE_URL.startswith("sqlite"):
@@ -27,6 +32,20 @@ engine = create_engine(
     **engine_args,
     **_pool_args,
 )
+
+if DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, connection_record):
+        """SQLite 并发写优化：WAL + busy_timeout + NORMAL 同步。
+
+        否则两个线程并发写会互锁抛 OperationalError: database is locked；
+        WAL 让读写不互斥，busy_timeout 让短竞争自旋而非立刻失败。
+        """
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

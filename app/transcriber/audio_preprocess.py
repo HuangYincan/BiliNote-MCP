@@ -16,9 +16,12 @@ from typing import List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
+# 单步超时（秒）：损坏文件/管道阻塞时避免 worker 线程永久挂死
+_FFMPEG_TIMEOUT = 1800
+
 
 def _ffmpeg(args: List[str], desc: str) -> None:
-    r = subprocess.run(["ffmpeg", "-y"] + args, capture_output=True)
+    r = subprocess.run(["ffmpeg", "-y"] + args, capture_output=True, timeout=_FFMPEG_TIMEOUT)
     if r.returncode != 0:
         raise RuntimeError(
             f"{desc} 失败: {r.stderr.decode('utf-8', 'replace')[-300:]}"
@@ -53,7 +56,7 @@ def probe_duration(wav_path: str) -> float:
         r = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "csv=p=0", wav_path],
-            capture_output=True, text=True,
+            capture_output=True, text=True, timeout=60,
         )
         return float(r.stdout.strip())
     except Exception:
@@ -128,3 +131,22 @@ def preprocess_pipeline(
     if enable_denoise:
         wav = denoise(wav)
     return chunk_if_long(wav, max_seconds=max_seconds, out_dir=work_dir)
+
+
+def cleanup_preprocess_files(wav_path: str) -> None:
+    """清理预处理产生的临时文件（`<名>_16k.wav` / `_part_*.wav` / `_denoised.wav`）。
+
+    这些文件创建在源文件同目录（含用户直接传的文件），转写后不清理会污染目录、
+    持续累积（长音频临时 wav 体积大）。只删我们生成的临时文件，绝不碰源文件。
+    失败静默。
+    """
+    p = Path(wav_path)
+    stem = p.stem
+    parent = p.parent
+    patterns = (f"{stem}_16k.wav", f"{stem}_part_*.wav", f"{stem}_denoised.wav")
+    for pattern in patterns:
+        for f in parent.glob(pattern):
+            try:
+                f.unlink(missing_ok=True)
+            except OSError:
+                pass

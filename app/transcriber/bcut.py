@@ -27,6 +27,10 @@ API_CREATE_TASK = API_BASE_URL + "/task"
 # 查询结果
 API_QUERY_RESULT = API_BASE_URL + "/task/result"
 
+# 语音识别模型 id：创建任务与查询结果必须一致（旧代码 create 用 "8"、query 用 7，
+# 不一致会导致查询永远查不到建的任务）
+_BCUT_MODEL_ID = 7
+
 logger = get_logger(__name__)
 
 class BcutTranscriber(Transcriber):
@@ -137,7 +141,7 @@ class BcutTranscriber(Transcriber):
     def _create_task(self) -> str:
         """开始创建转换任务"""
         resp = self.session.post(
-            API_CREATE_TASK, json={"resource": self.__download_url, "model_id": "8"}, headers=self.headers
+            API_CREATE_TASK, json={"resource": self.__download_url, "model_id": _BCUT_MODEL_ID}, headers=self.headers
         )
         resp.raise_for_status()
         resp = resp.json()
@@ -153,8 +157,8 @@ class BcutTranscriber(Transcriber):
     def _query_result(self) -> dict:
         """查询转换结果"""
         resp = self.session.get(
-            API_QUERY_RESULT, 
-            params={"model_id": 7, "task_id": self.task_id}, 
+            API_QUERY_RESULT,
+            params={"model_id": _BCUT_MODEL_ID, "task_id": self.task_id},
             headers=self.headers
         )
         resp.raise_for_status()

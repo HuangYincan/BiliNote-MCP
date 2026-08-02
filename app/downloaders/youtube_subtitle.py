@@ -75,17 +75,25 @@ class YouTubeSubtitleFetcher:
                 return None
 
             # 3. 获取字幕内容
+            # 兼容两种返回：新版 youtube-transcript-api 是 FetchedTranscriptSnippet
+            # dataclass（.text/.start/.duration），旧版是 dict。不能用 str(snippet)——
+            # dataclass 的 str() 是整条 repr，会把每条字幕变成垃圾文本。
             fetched = transcript.fetch()
             segments = []
             for snippet in fetched:
-                text = snippet.get("text", "").strip() if isinstance(snippet, dict) else str(snippet).strip()
+                if isinstance(snippet, dict):
+                    text = (snippet.get("text") or "").strip()
+                    start = float(snippet.get("start", 0))
+                    duration = float(snippet.get("duration", 0))
+                else:
+                    text = (getattr(snippet, "text", "") or "").strip()
+                    start = float(getattr(snippet, "start", 0))
+                    duration = float(getattr(snippet, "duration", 0))
                 if not text:
                     continue
-                start = snippet.get("start", 0) if isinstance(snippet, dict) else 0
-                duration = snippet.get("duration", 0) if isinstance(snippet, dict) else 0
                 segments.append(TranscriptSegment(
-                    start=float(start),
-                    end=float(start) + float(duration),
+                    start=start,
+                    end=start + duration,
                     text=text,
                 ))
 

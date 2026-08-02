@@ -2,8 +2,8 @@
 
 架构：内嵌流水线（`app/` 为 vendored 自上游的核心模块），**无需启动 FastAPI 后端**。
 生成笔记为异步任务：`generate_note` 立即返回 task_id，后台线程执行
-`NoteGenerator.generate()`，进度写入 note_results/{task_id}.status.json，
-最终结果写入 note_results/{task_id}.json。
+`NoteGenerator.generate()`，进度写入 note_results/{task_id}/status.json，
+最终结果写入 note_results/{task_id}/result.json（任务文件夹布局）。
 
 运行时环境（数据目录、DB、输出目录）在 import app.* 之前由 config.setup_environment()
 初始化，详见 videonote_mcp/config.py。
@@ -89,6 +89,8 @@ mcp = FastMCP("videonote")
 # ---------- 后台任务 ----------
 
 _pool = ThreadPoolExecutor(max_workers=int(os.environ.get("VIDEONOTE_MAX_WORKERS", "3")))
+# 模型下载独立线程池：不占笔记任务 worker 槽位，也不被并发门禁计入进行中任务
+_dl_pool = ThreadPoolExecutor(max_workers=1)
 
 # 任务注册表：task_id -> (Future, cancel_event)，供 cancel_note 使用（thread-safe）
 _tasks_lock = threading.Lock()
@@ -245,7 +247,7 @@ def _run_step_task(
 
     与 _run_note_task 同一套语义：排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING；
     否则写 INITIALIZING → 执行 step_fn(task_id, cancel_event, **kwargs) 得到 dict payload →
-    原子落盘 {task_id}.json + 记入 manifest → 成功。异常 → FAILED，取消 → CANCELLED，
+    原子落盘 {task_id}/result.json + 记入 manifest → 成功。异常 → FAILED，取消 → CANCELLED，
     finally 从 _task_futures/_task_events 弹出（释放并发槽位）。
     """
     try:
@@ -329,12 +331,16 @@ def _step_summarize(
 
 
 def _coerce_local_path(p: str) -> Path:
-    """把 file:// URI 或普通路径规整为本地 Path（expanduser 展开 ~）。"""
+    """把 file:// URI 或普通路径规整为本地 Path（expanduser 展开 ~）。
+
+    必须 unquote：Path.as_uri() 会把空格/非 ASCII 编码成 %20/百分号，不解码
+    Path.exists() 永远 False（含空格/中文的文件会被静默判为不存在）。
+    """
     s = str(p or "").strip()
     if s.startswith("file://"):
-        from urllib.parse import urlparse
+        from urllib.parse import unquote, urlparse
 
-        s = urlparse(s).path
+        s = unquote(urlparse(s).path)
     return Path(s).expanduser()
 
 
@@ -355,6 +361,22 @@ def _detect_platform(url: str) -> str:
     yt-dlp 也失败时，任务层用 handoff 提示让 Agent 接手。
     """
     return pipeline.detect_platform(url)
+
+
+_TASK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _validate_task_id(task_id: str) -> str:
+    """校验 task_id 是安全 token，防路径穿越。
+
+    task_id 会被直接拼进 `NOTE_OUTPUT_DIR / task_id` 路径，`../evil` 之类
+    可穿透数据目录读取/写入外部文件。server 生成的 task_id 是 uuid4 hex；
+    这里收紧到字母数字 + `-`/`_`。
+    """
+    tid = str(task_id or "").strip()
+    if not _TASK_ID_RE.fullmatch(tid):
+        raise ValueError(f"非法 task_id（只允许字母数字/下划线/连字符，最长 64）: {task_id!r}")
+    return tid
 
 
 def _fetch_live_models(provider: Dict) -> Optional[List[str]]:
@@ -583,6 +605,7 @@ def prepare_note_material(
 @mcp.tool()
 def get_task_status(task_id: str) -> str:
     """查询笔记生成任务进度。SUCCESS 时 result 含 markdown / transcript / audio_meta。"""
+    task_id = _validate_task_id(task_id)
     task_dir = NOTE_OUTPUT_DIR / str(task_id)
     status_file = task_dir / "status.json"
     if not status_file.exists():
@@ -627,6 +650,7 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
 
     返回与 get_task_status 相同的结构，SUCCESS 时 result 含最终 Markdown。
     """
+    task_id = _validate_task_id(task_id)
     deadline = time.time() + max(1, timeout)
     while time.time() < deadline:
         resp = json.loads(get_task_status(task_id))
@@ -650,6 +674,7 @@ def cancel_note(task_id: str) -> str:
 
     返回 {ok, task_id, status, message?}。
     """
+    task_id = _validate_task_id(task_id)
     with _tasks_lock:
         future = _task_futures.get(task_id)
         event = _task_events.get(task_id)
@@ -659,10 +684,17 @@ def cancel_note(task_id: str) -> str:
             ensure_ascii=False,
         )
     # 排队中：future.cancel() 可释放 worker 槽；运行中：靠 event 协作式停止（下一阶段边界）
+    cancelled = False
     if future is not None and not future.done():
-        future.cancel()
+        cancelled = future.cancel()
     event.set()
     _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
+    if cancelled:
+        # 排队中（未启动）任务：_run_note_task/_run_step_task 不会执行，
+        # finally 里的 pop 不跑 → 手动弹注册表，避免条目泄漏
+        with _tasks_lock:
+            _task_futures.pop(task_id, None)
+            _task_events.pop(task_id, None)
     logger.info(f"已取消任务 task_id={task_id}")
     return json.dumps({"ok": True, "task_id": task_id, "status": "CANCELLED"}, ensure_ascii=False)
 
@@ -686,6 +718,7 @@ def get_task_files(task_id: str) -> str:
     返回 {task_id, manifest_paths, existing}，existing 是真实存在的文件/目录列表。
     清理前先用它查看该任务占了哪些存储。
     """
+    task_id = _validate_task_id(task_id)
     return json.dumps(list_task_files(task_id), ensure_ascii=False)
 
 
@@ -699,6 +732,7 @@ def cleanup_note(task_id: str, include_note: bool = False) -> str:
     只删除 manifest 记录 / note_results/{task_id}* / dl_{task_id} 前缀的文件，
     且 resolve 校验在数据目录内（防路径穿越）。返回 {deleted, missing, errors, note_kept}。
     """
+    task_id = _validate_task_id(task_id)
     return json.dumps(cleanup_task_files(task_id, include_note=include_note), ensure_ascii=False)
 
 
@@ -1086,7 +1120,7 @@ def download_transcriber_model(model_size: str, transcriber_type: str = "fast-wh
                 dl_state.mark_failed(key, str(e))
                 logger.error(f"whisper 模型 {size} 下载失败: {e}", exc_info=True)
 
-        _pool.submit(_dl)
+        _dl_pool.submit(_dl)
         return json.dumps(
             {"started": True, "model_size": size, "transcriber_type": "fast-whisper"},
             ensure_ascii=False,
@@ -1114,7 +1148,7 @@ def download_transcriber_model(model_size: str, transcriber_type: str = "fast-wh
                 dl_state.mark_failed(f"mlx-{size}", str(e))
                 logger.error(f"mlx 模型 {size} 下载失败: {e}", exc_info=True)
 
-        _pool.submit(_dl_mlx)
+        _dl_pool.submit(_dl_mlx)
         return json.dumps(
             {"started": True, "model_size": size, "transcriber_type": "mlx-whisper"},
             ensure_ascii=False,
@@ -1222,6 +1256,7 @@ def export_transcript(
     """
     from videonote_mcp.export import export_transcript as _export
 
+    task_id = _validate_task_id(task_id)
     task_dir = NOTE_OUTPUT_DIR / str(task_id)
     result_json = task_dir / "result.json"
     transcript = None

@@ -111,7 +111,7 @@ End-to-end mode takes a single link: `generate_note` runs the whole pipeline asy
 
 # 1 📥 Download and Platform Parsing
 
-`validate_url` detects which platform a link belongs to (bilibili / youtube / douyin / tiktok / kuaishou / local); URLs outside the built-in 5 platforms return `platform:"generic"` and automatically fall back to **yt-dlp generic extraction** (1800+ sites). `set_downloader_cookie` configures a platform cookie (e.g. Bilibili SESSDATA to get past login walls); `fetch_subtitles` fetches platform subtitles only, without downloading or transcribing.
+`validate_url` detects which platform a link belongs to (bilibili / youtube / douyin / tiktok / kuaishou / local); URLs outside the built-in 6 platforms return `platform:"generic"` and automatically fall back to **yt-dlp generic extraction** (1800+ sites). `set_downloader_cookie` configures a platform cookie (e.g. Bilibili SESSDATA to get past login walls); `fetch_subtitles` fetches platform subtitles only, without downloading or transcribing.
 
 | Tool | Description | Type |
 |------|------|------|

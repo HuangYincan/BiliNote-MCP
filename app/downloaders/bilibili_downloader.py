@@ -52,7 +52,8 @@ class BilibiliDownloader(Downloader, ABC):
         video_url: str,
         output_dir: Union[str, None] = None,
         quality: DownloadQuality = "fast",
-        need_video:Optional[bool]=False
+        need_video: Optional[bool] = False,
+        skip_download: bool = False,
     ) -> AudioDownloadResult:
         if output_dir is None:
             output_dir = get_data_dir()
@@ -80,7 +81,8 @@ class BilibiliDownloader(Downloader, ABC):
             ydl_opts['cookiefile'] = self._cookiefile
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=True)
+            # skip_download=True（已有字幕只需元信息）：download=False 只取 metadata
+            info = ydl.extract_info(video_url, download=not skip_download)
             video_id = info.get("id")
             title = info.get("title")
             duration = info.get("duration", 0)
@@ -112,12 +114,12 @@ class BilibiliDownloader(Downloader, ABC):
         os.makedirs(output_dir, exist_ok=True)
         print("video_url",video_url)
         video_id=extract_video_id(video_url, "bilibili")
-        video_path = os.path.join(output_dir, f"{video_id}.mp4")
-        if os.path.exists(video_path):
-            return video_path
-
-        # 检查是否已经存在
-
+        # 多 P 视频 yt-dlp 的 id 是 {BV}_pN（缓存名 {BV}_pN.mp4），与纯 BV 不同 →
+        # 用前缀 glob 匹配，否则缓存永远不命中、每次重新下载
+        import glob as _glob
+        existing = _glob.glob(os.path.join(output_dir, f"{video_id}*.mp4"))
+        if existing:
+            return existing[0]
 
         output_path = os.path.join(output_dir, "%(id)s.%(ext)s")
 

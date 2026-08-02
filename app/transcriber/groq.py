@@ -24,9 +24,11 @@ class GroqTranscriber(Transcriber, ABC):
     @timeit
     def transcript(self, file_path: str) -> TranscriptResult:
         file_size = os.path.getsize(file_path)
+        temp_file = None  # 压缩产生的临时 mp3，结束后清理
         if file_size > MAX_SIZE_BYTES:
             print(f"文件超过 {MAX_SIZE_MB}MB，开始压缩（当前 {round(file_size / (1024 * 1024), 2)}MB）...")
             file_path = compress_audio(file_path)
+            temp_file = file_path
             print(f"压缩完成，临时路径：{file_path}")
         provider = ProviderService.get_provider_by_id('groq')
 
@@ -40,31 +42,39 @@ class GroqTranscriber(Transcriber, ABC):
             key_label="Groq 转写引擎的 API Key",
         )
         filename = file_path
+        model = os.getenv("GROQ_TRANSCRIBER_MODEL") or "whisper-large-v3"
+        try:
+            with open(filename, "rb") as file:
+                transcription = client.audio.transcriptions.create(
+                    file=(filename, file.read()),
+                    model=model,
+                    response_format="verbose_json",
+                )
+                print(transcription.text)
+            print(transcription)
+            segments = []
+            full_text = ""
 
-        with open(filename, "rb") as file:
-            transcription = client.audio.transcriptions.create(
-                file=(filename, file.read()),
-                model=os.getenv('GROQ_TRANSCRIBER_MODEL'),
-                response_format="verbose_json",
+            for seg in transcription.segments:
+                text = seg.text.strip()
+                full_text += text + " "
+                segments.append(TranscriptSegment(
+                    start=seg.start,
+                    end=seg.end,
+                    text=text
+                ))
+
+            result = TranscriptResult(
+                language=transcription.language,
+                full_text=full_text.strip(),
+                segments=segments,
+                raw=transcription.to_dict()
             )
-            print(transcription.text)
-        print(transcription)
-        segments = []
-        full_text = ""
-
-        for seg in transcription.segments:
-            text = seg.text.strip()
-            full_text += text + " "
-            segments.append(TranscriptSegment(
-                start=seg.start,
-                end=seg.end,
-                text=text
-            ))
-
-        result = TranscriptResult(
-            language=transcription.language,
-            full_text=full_text.strip(),
-            segments=segments,
-            raw=transcription.to_dict()
-        )
-        return result
+            return result
+        finally:
+            # 清理压缩临时文件（成功/失败都不残留）
+            if temp_file:
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass

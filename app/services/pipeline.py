@@ -51,6 +51,27 @@ _PLATFORM_HINTS = [
 
 # ---------------- 平台 / 引擎 ----------------
 
+def _match_platform_host(u: str) -> Optional[str]:
+    """基于 host 精确匹配平台（含子域名/端口/无协议 URL）。
+
+    旧的子串匹配（`"bilibili.com" in u`）会把 evilbilibili.com、bilibili.com.evil.com
+    误判成 bilibili；这里按 host == 目标 或 host 以 `.目标` 结尾判断。
+    """
+    from urllib.parse import urlparse
+
+    s = u if "://" in u else f"http://{u}"
+    try:
+        host = urlparse(s).netloc.lower().split(":")[0].rstrip(".")
+    except Exception:
+        return None
+    if not host:
+        return None
+    for platform, needles in _PLATFORM_HINTS:
+        if any(host == n or host.endswith("." + n) for n in needles):
+            return platform
+    return None
+
+
 def detect_platform(url: str) -> str:
     """从 URL / 本地路径识别平台（与 server._detect_platform 一致）。
 
@@ -63,10 +84,7 @@ def detect_platform(url: str) -> str:
         raise ValueError("url 为空")
     if u.startswith(("file:", "/", "./", "../", "~/")) or Path(u).expanduser().exists():
         return "local"
-    for platform, needles in _PLATFORM_HINTS:
-        if any(n in u for n in needles):
-            return platform
-    return "generic"
+    return _match_platform_host(u) or "generic"
 
 
 def handoff_result(url: str, reason: str = "") -> dict:
@@ -102,10 +120,14 @@ def build_transcriber() -> Transcriber:
     """按当前转写器配置实例化转写器（与 note.py._init_transcriber 一致）。"""
     from app.services.transcriber_config_manager import TranscriberConfigManager
 
-    ttype = TranscriberConfigManager().get_transcriber_type()
+    mgr = TranscriberConfigManager()
+    ttype = mgr.get_transcriber_type()
     if ttype not in _transcribers:
         raise ValueError(f"不支持的转写器：{ttype}")
-    return get_transcriber(transcriber_type=ttype)
+    return get_transcriber(
+        transcriber_type=ttype,
+        model_size=mgr.get_whisper_model_size(),
+    )
 
 
 def get_gpt(provider_id: str, model_name: Optional[str] = None) -> GPT:
@@ -187,10 +209,13 @@ def _transcribe_with_preprocess(audio_file: str, transcriber: Transcriber) -> di
     offset = 0.0
     language = None
     for chunk in chunks:
+        chunk_dur = chunk_duration_guess(chunk)
         try:
             tr = transcriber.transcript(file_path=chunk)
         except Exception as exc:  # noqa: BLE001 —— 单块失败跳过，不阻断整段
             logger.warning(f"预处理分块转写失败（跳过该块）: {exc}")
+            # 失败也要推进时间偏移，否则后续段时间轴整体错位（缺了这块的 ~1800s）
+            offset += chunk_dur
             continue
         if language is None and tr.language:
             language = tr.language
@@ -202,7 +227,15 @@ def _transcribe_with_preprocess(audio_file: str, transcriber: Transcriber) -> di
                     text=seg.text,
                 )
             )
-        offset += chunk_duration_guess(chunk)
+        offset += chunk_dur
+
+    # 清理预处理临时文件（16k wav + 分块），避免污染用户目录
+    try:
+        from app.transcriber.audio_preprocess import cleanup_preprocess_files
+
+        cleanup_preprocess_files(wav)
+    except Exception:  # noqa: BLE001 —— 清理失败不阻断
+        pass
 
     full_text = "".join(s.text for s in all_segments)
     return asdict(
@@ -278,35 +311,34 @@ def fetch_comments_danmaku(video_url: str, comments_limit: int = 20) -> Optional
     与 fetch_comments / fetch_danmaku 两个独立工具同源（BilibiliCommentFetcher），
     这里是「拼接成一段」的聚合版，供 summarize_material / generate 直接注入。
     """
+    parts: List[str] = []
     try:
         from app.downloaders.bilibili_comment import BilibiliCommentFetcher
 
         fetcher = BilibiliCommentFetcher()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"BilibiliCommentFetcher 不可用，跳过弹幕/评论抓取: {exc}")
+
+        danmaku = fetcher.fetch_danmaku(str(video_url))
+        if danmaku.get("ok"):
+            summary = danmaku.get("danmaku_summary") or ""
+            if summary:
+                parts.append(f"【弹幕】\n{summary}")
+        else:
+            logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
+
+        comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
+        if comments.get("ok"):
+            rows = comments.get("comments") or []
+            if rows:
+                lines = [
+                    f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
+                    for c in rows
+                ]
+                parts.append("【热门评论】\n" + "\n".join(lines))
+        else:
+            logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
+    except Exception as exc:  # noqa: BLE001 —— 任何网络/解析异常都不阻断任务
+        logger.warning(f"弹幕/评论抓取失败，跳过: {exc}")
         return None
-
-    parts: List[str] = []
-
-    danmaku = fetcher.fetch_danmaku(str(video_url))
-    if danmaku.get("ok"):
-        summary = danmaku.get("danmaku_summary") or ""
-        if summary:
-            parts.append(f"【弹幕】\n{summary}")
-    else:
-        logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
-
-    comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
-    if comments.get("ok"):
-        rows = comments.get("comments") or []
-        if rows:
-            lines = [
-                f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
-                for c in rows
-            ]
-            parts.append("【热门评论】\n" + "\n".join(lines))
-    else:
-        logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
 
     if not parts:
         return None
@@ -332,9 +364,10 @@ def _frames_to_data_uris(frames: Optional[List[str]]) -> List[str]:
                 continue
             p = Path(s)
             if s.startswith("file://"):
-                from urllib.parse import urlparse
+                from urllib.parse import unquote, urlparse
 
-                p = Path(urlparse(s).path)
+                # 必须 unquote：as_uri() 会把空格/中文编码成 %20，不解码 exists() 恒 False
+                p = Path(unquote(urlparse(s).path))
             if not p.exists():
                 logger.warning(f"帧文件不存在，跳过: {f}")
                 continue

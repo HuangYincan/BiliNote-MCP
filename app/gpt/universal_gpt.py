@@ -33,7 +33,11 @@ class UniversalGPT(GPT):
         self._retry_base_backoff = float(os.getenv("OPENAI_RETRY_BACKOFF_SECONDS", "1.5"))
 
     def _format_time(self, seconds: float) -> str:
-        return str(timedelta(seconds=int(seconds)))[2:]
+        # ≥1h 保留小时位（00:00 的旧实现会截断），<1h 输出 MM:SS
+        total = int(seconds)
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
     def _build_segment_text(self, segments: List[TranscriptSegment]) -> str:
         return "\n".join(
@@ -102,7 +106,12 @@ class UniversalGPT(GPT):
 
     def _checkpoint_path(self, checkpoint_key: str) -> Path:
         safe_key = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in checkpoint_key)
-        return self.checkpoint_dir / f"{safe_key}.gpt.checkpoint.json"
+        # 落盘到任务夹 gen/ 下（而非 note_results 根目录扁平 {task_id}.gpt.checkpoint.json）：
+        # 与 note.py:203 的 manifest 记录 gen/checkpoint.json 一致，
+        # 取消/失败残留才能被 cleanup_note / cleanup_all 清理到。
+        path = self.checkpoint_dir / safe_key / "gen" / "checkpoint.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _build_source_signature(self, source: GPTSource) -> str:
         payload = {
@@ -318,6 +327,14 @@ class UniversalGPT(GPT):
 
         if len(partials) > len(chunks):
             partials = []
+
+        # 空素材（无转写分段 + 无帧）时 chunker 返回 []，直接给用户明确错误，
+        # 而不是在 _merge_partials([])[0] 抛 IndexError
+        if not chunks and not partials:
+            raise ValueError(
+                "素材为空（无转写分段、无帧图片），无法总结——请先提供转写"
+                "（transcribe_media / fetch_subtitles / prepare_note_material）或帧素材"
+            )
 
         for offset, chunk in enumerate(chunks[len(partials):]):
             _check_cancel(cancel_event)  # 每 chunk 前检查取消（LLM 循环内灵敏取消）

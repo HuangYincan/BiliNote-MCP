@@ -17,8 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-_DB = "/tmp/videonote_test_task_index.db"
-os.environ["DATABASE_URL"] = f"sqlite:///{_DB}"
+# 与会话级 conftest 同库（全量 pytest 时 conftest 已设 DATABASE_URL，这里 setdefault 不覆盖）；
+# 直接 `python tests/test_task_index.py` 时 conftest 不加载，setdefault 兜底自建同路径库。
+_DB = "/tmp/videonote_pytest/video_note.db"
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_DB}")
 
 from app.db.init_db import init_db  # noqa: E402
 from app.db.video_task_dao import (  # noqa: E402

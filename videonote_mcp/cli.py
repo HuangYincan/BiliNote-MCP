@@ -1319,7 +1319,9 @@ def _export_cli(argv) -> None:
 
     from videonote_mcp.export import export_transcript
 
-    result_path = Path(os.environ.get("NOTE_OUTPUT_DIR", "note_results")) / f"{opts.task_id}.json"
+    note_output_dir = Path(os.environ.get("NOTE_OUTPUT_DIR", "note_results"))
+    task_dir = note_output_dir / opts.task_id
+    result_path = task_dir / "result.json"
     if not result_path.exists():
         print(f"✗ 找不到任务 {opts.task_id} 的结果文件（{result_path}），任务可能未成功", file=sys.stderr)
         sys.exit(1)
@@ -1334,7 +1336,7 @@ def _export_cli(argv) -> None:
         print(f"✗ 任务 {opts.task_id} 没有转写结果（可能未到转写阶段）", file=sys.stderr)
         sys.exit(1)
 
-    out_dir = opts.out_dir
+    out_dir = opts.out_dir or str(task_dir / "gen")
     written = export_transcript(transcript, formats=formats, out_dir=out_dir, task_id=opts.task_id)
     if not written:
         print(f"✗ 没有成功导出任何格式（请求: {formats}）", file=sys.stderr)

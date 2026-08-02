@@ -114,7 +114,7 @@ flowchart LR
 
 # 1 📥 下载与平台解析
 
-`validate_url` 判断链接属于哪个平台（bilibili / youtube / douyin / tiktok / kuaishou / local）；内置 5 平台之外返回 `platform:"generic"`，自动走 **yt-dlp 通用提取**覆盖 1800+ 站点。`set_downloader_cookie` 配平台 Cookie（如 B 站 SESSDATA，可跳过登录墙）；`fetch_subtitles` 只取平台字幕，不下载不转写。
+`validate_url` 判断链接属于哪个平台（bilibili / youtube / douyin / tiktok / kuaishou / local）；内置 6 平台之外返回 `platform:"generic"`，自动走 **yt-dlp 通用提取**覆盖 1800+ 站点。`set_downloader_cookie` 配平台 Cookie（如 B 站 SESSDATA，可跳过登录墙）；`fetch_subtitles` 只取平台字幕，不下载不转写。
 
 | 工具 | 说明 | 类型 |
 |------|------|------|

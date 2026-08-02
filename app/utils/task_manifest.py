@@ -300,6 +300,10 @@ def cleanup_task_files(task_id: str, include_note: bool = False) -> Dict:
             for child in gen.iterdir():
                 if child in notes or child.name == "note.md":
                     continue
+                if child.name == "Assets":
+                    # note.md 用相对引用 Assets/... 指向截图；保留笔记时必须保留，
+                    # 否则 cleanup_note 之后笔记里全是悬空图片
+                    continue
                 to_delete.add(child)
 
     stats = _delete_all(to_delete)

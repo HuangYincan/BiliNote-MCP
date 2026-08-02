@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -173,6 +174,10 @@ class NoteGenerator:
 
         try:
             logger.info(f"开始生成笔记 (task_id={task_id})")
+            # 重置实例状态：NoteGenerator 若被复用跑第二个任务，不清会串上一个任务的数据
+            self.video_path = None
+            self.video_img_urls = []
+            self.transcriber = None
             self._update_status(task_id, TaskStatus.PARSING)
 
             # 获取下载器与 GPT 实例
@@ -337,6 +342,17 @@ class NoteGenerator:
                     portable_dir.mkdir(parents=True, exist_ok=True)
                     (portable_dir / "note.md").write_text(markdown, encoding="utf-8")
                     record_task_paths(task_id, [portable_dir, portable_dir / "note.md"])
+                    # 便携副本的截图：把 gen/Assets/ 一并拷贝，保证相对引用 Assets/... 可读
+                    assets_src = gen_dir / "Assets"
+                    if assets_src.exists():
+                        try:
+                            assets_dst = portable_dir / "Assets"
+                            if assets_dst.exists():
+                                shutil.rmtree(assets_dst)
+                            shutil.copytree(assets_src, assets_dst)
+                            record_task_paths(task_id, [assets_dst])
+                        except Exception as e2:
+                            logger.warning(f"拷贝便携笔记截图失败: {e2}")
                 except Exception as e:
                     logger.warning(f"写便携笔记副本失败: {e}")
 
@@ -394,8 +410,13 @@ class NoteGenerator:
             logger.error(f"未找到支持的转写器：{self.transcriber_type}")
             raise Exception(f"不支持的转写器：{self.transcriber_type}")
 
-        logger.info(f"使用转写器：{self.transcriber_type}")
-        return get_transcriber(transcriber_type=self.transcriber_type)
+        logger.info(f"使用转写器：{self.transcriber_type} / {self.model_size}")
+        # 必须把配置的模型尺寸传下去：get_transcriber 不再读环境变量优先，
+        # 否则 set_transcriber 配置的 large-v3 会被 WHISPER_MODEL_SIZE=tiny 覆盖。
+        return get_transcriber(
+            transcriber_type=self.transcriber_type,
+            model_size=self.model_size,
+        )
 
     def _get_gpt(self, model_name: Optional[str], provider_id: Optional[str]) -> GPT:
         """
@@ -790,7 +811,7 @@ class NoteGenerator:
                 formats=formats,
                 screenshot=screenshot,
                 link=link,
-                tags=audio_meta.raw_info.get("tags", []) if audio_meta else [],
+                tags=audio_meta.raw_info.get("tags", []) if (audio_meta and audio_meta.raw_info) else [],
                 checkpoint_key=task_id,
                 cancel_event=cancel_event,
             )
@@ -928,8 +949,10 @@ class NoteGenerator:
                 markdown = markdown.replace(marker, f"![]({img_url})", 1)
             except Exception as exc:
                 logger.error(f"生成截图失败 (timestamp={ts})：{exc}")
-                # self._handle_exception(task_id, exc)
-                return None
+                # 单帧失败只移除该 marker，绝不让整篇笔记作废（返回 None 会让上层
+                # write_text(None) 抛 TypeError → 任务 FAILED、笔记整篇丢失）
+                markdown = markdown.replace(marker, "", 1)
+                continue
         return markdown
 
     @staticmethod

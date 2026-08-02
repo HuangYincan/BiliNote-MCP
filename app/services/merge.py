@@ -10,6 +10,10 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
 
+# ffmpeg 单步超时（秒）：损坏文件/管道阻塞时避免 worker 线程永久挂死
+#（挂起的 subprocess 会占住 3-worker 池，导致后续所有任务排队不动）
+_FFMPEG_TIMEOUT = 1800
+
 
 def _to_wav(input_path: str, out_path: str) -> None:
     """ffmpeg 转 16kHz mono wav。失败抛 RuntimeError。"""
@@ -18,7 +22,7 @@ def _to_wav(input_path: str, out_path: str) -> None:
         "-vn", "-ar", "16000", "-ac", "1",
         "-c:a", "pcm_s16le", out_path,
     ]
-    r = subprocess.run(cmd, capture_output=True)
+    r = subprocess.run(cmd, capture_output=True, timeout=_FFMPEG_TIMEOUT)
     if r.returncode != 0:
         raise RuntimeError(
             f"ffmpeg 转换失败 {input_path}: {r.stderr.decode('utf-8', 'replace')[-300:]}"
@@ -64,7 +68,7 @@ def merge_audio(
             "ffmpeg", "-y", "-f", "concat", "-safe", "0",
             "-i", str(list_file), "-c", "copy", str(final_path),
         ]
-        r = subprocess.run(cmd, capture_output=True)
+        r = subprocess.run(cmd, capture_output=True, timeout=_FFMPEG_TIMEOUT)
         if r.returncode != 0:
             raise RuntimeError(
                 f"ffmpeg concat 失败: {r.stderr.decode('utf-8', 'replace')[-300:]}"

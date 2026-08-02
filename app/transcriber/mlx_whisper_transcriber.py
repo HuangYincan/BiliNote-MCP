@@ -48,9 +48,9 @@ class MLXWhisperTranscriber(Transcriber):
         if platform.system() != "Darwin":
             raise RuntimeError("MLX Whisper 仅支持 Apple 平台")
 
-        # 检查环境变量
-        if os.environ.get("TRANSCRIBER_TYPE") != "mlx-whisper":
-            raise RuntimeError("必须设置环境变量 TRANSCRIBER_TYPE=mlx-whisper 才能使用 MLX Whisper")
+        # 注意：不做 TRANSCRIBER_TYPE 环境变量检查。引擎切换是写 config JSON
+        #（TranscriberConfigManager / set_transcriber），不写环境变量；此处由
+        # get_transcriber 按类型路由构造，env 检查只会让配置好的 mlx-whisper 构造即报错。
 
         self.model_size = model_size
         self.model_name = resolve_mlx_repo_id(model_size)
@@ -86,9 +86,12 @@ class MLXWhisperTranscriber(Transcriber):
         with self._lock:
             try:
                 # 使用 MLX Whisper 进行转录
+                # 必须传本地模型目录（__init__ 已 snapshot_download 到 model_path）：
+                # 传 repo_id 会走默认 HF cache 重新加载/下载，自定义目录白占空间、离线必失败
+                local_path = self.model_path if (self.model_path and os.path.exists(self.model_path)) else self.model_name
                 result = mlx_whisper.transcribe(
                     file_path,
-                    path_or_hf_repo=f"{self.model_name}"
+                    path_or_hf_repo=local_path
                 )
 
                 # 转换为标准格式
