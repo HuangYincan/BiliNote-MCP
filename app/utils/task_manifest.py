@@ -37,6 +37,14 @@ def get_note_dir() -> Path:
     return Path(os.getenv("NOTE_OUTPUT_DIR", str(get_data_dir() / "note_results"))).expanduser().resolve()
 
 
+def task_dir(task_id: str) -> Path:
+    """每任务统一文件夹：NOTE_OUTPUT_DIR/{task_id}（数据层重构后的唯一 per-task 根）。
+
+    一个任务的所有内容（raw/、gen/、status.json、manifest.json、result.json）都在此目录下。
+    """
+    return get_note_dir() / str(task_id)
+
+
 def get_screenshots_dir() -> Path:
     """静态截图目录（与 app.services.note.IMAGE_OUTPUT_DIR 一致）。"""
     return Path(os.getenv("IMAGE_OUTPUT_DIR", str(get_data_dir() / "static" / "screenshots"))).expanduser().resolve()
@@ -58,21 +66,37 @@ def get_models_dir() -> Path:
 
 
 def manifest_path(task_id: str) -> Path:
-    return get_note_dir() / f"{task_id}.manifest.json"
+    """manifest 文件落在任务文件夹内（{task_dir}/manifest.json）。"""
+    return task_dir(task_id) / "manifest.json"
 
 
 # ---------------- manifest 记录 / 读取 ----------------
 
+def _read_manifest(task_id: str) -> dict:
+    f = manifest_path(task_id)
+    if not f.exists():
+        return {"task_id": task_id, "paths": [], "meta": {}}
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {"task_id": task_id, "paths": [], "meta": {}}
+        data.setdefault("paths", [])
+        data.setdefault("meta", {})
+        return data
+    except Exception:  # noqa: BLE001
+        return {"task_id": task_id, "paths": [], "meta": {}}
+
+
 def record_task_paths(task_id: str, paths: Sequence) -> None:
-    """把 task 创建的文件/目录追加进 manifest（去重，原子写 tmp+replace）。
+    """把 task 创建的文件/目录追加进 manifest（去重，原子写 tmp+replace，保留 meta 键）。
 
     尽力而为：任何失败只记日志，不抛异常、不阻断调用方。
     """
     if not task_id:
         return
     try:
-        existing = get_task_paths(task_id)
-        seen = set(existing)
+        data = _read_manifest(task_id)
+        seen = set(data["paths"])
         additions: List[str] = []
         for p in paths:
             if not p:
@@ -81,11 +105,10 @@ def record_task_paths(task_id: str, paths: Sequence) -> None:
             if s not in seen:
                 seen.add(s)
                 additions.append(s)
-        if not additions:
-            return
+        if additions:
+            data["paths"] = list(data["paths"]) + additions
         f = manifest_path(task_id)
         f.parent.mkdir(parents=True, exist_ok=True)
-        data = {"task_id": task_id, "paths": existing + additions}
         tmp = f.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(f)
@@ -94,15 +117,32 @@ def record_task_paths(task_id: str, paths: Sequence) -> None:
 
 
 def get_task_paths(task_id: str) -> List[str]:
-    """读 manifest；不存在或损坏返回 []。"""
-    f = manifest_path(task_id)
-    if not f.exists():
-        return []
+    """读 manifest 的 paths；不存在或损坏返回 []。"""
+    return list(_read_manifest(task_id).get("paths", []))
+
+
+def record_task_meta(task_id: str, meta: dict) -> None:
+    """把任务语义元数据（title/summary 等）合并进 manifest 的 meta 键。
+
+    与 record_task_paths 同文件（保留 paths），供 get_task_files 展示。
+    """
+    if not task_id or not meta:
+        return
     try:
-        data = json.loads(f.read_text(encoding="utf-8"))
-        return list(data.get("paths", []))
-    except Exception:  # noqa: BLE001
-        return []
+        data = _read_manifest(task_id)
+        data["meta"] = {**data.get("meta", {}), **meta}
+        f = manifest_path(task_id)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(f)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("记录 task meta 失败 task_id=%s: %s", task_id, e)
+
+
+def get_task_meta(task_id: str) -> dict:
+    """读 manifest 的 meta 键；不存在返回 {}。"""
+    return dict(_read_manifest(task_id).get("meta", {}))
 
 
 def remove_manifest(task_id: str) -> None:
@@ -168,9 +208,16 @@ def _delete_all(paths: Sequence[Path]) -> Dict[str, List]:
 
 
 def _note_paths(task_id: str) -> set:
-    """该 task 的「最终笔记」路径集合：note_dir 目录与其 note.md。"""
-    roots = [get_note_dir(), get_data_dir()]
+    """该 task 的「最终笔记」路径集合：gen/note.md 与其所在目录。"""
+    tdir = task_dir(task_id)
+    gen = tdir / "gen"
     notes = set()
+    note_md = gen / "note.md"
+    if note_md.exists():
+        notes.add(note_md)
+        notes.add(gen)
+    # 便携笔记副本（用户指定 notes_dir 时写 <notes_dir>/<标题>/note.md）
+    roots = [get_note_dir(), get_data_dir()]
     for p in get_task_paths(task_id):
         resolved = _safe_resolve(p, roots)
         if not resolved:
@@ -179,20 +226,15 @@ def _note_paths(task_id: str) -> set:
             notes.add(resolved)
         elif resolved.is_dir() and (resolved / "note.md").exists():
             notes.add(resolved)
-    # 便携默认笔记目录：note_results/{task_id}/note.md
-    portable = get_note_dir() / task_id
-    if (portable / "note.md").exists():
-        notes.add(portable / "note.md")
-        notes.add(portable)
     return notes
 
 
 # ---------------- 查询 ----------------
 
 def list_task_files(task_id: str) -> Dict:
-    """列出某 task 在磁盘上相关的文件/目录（manifest 记录 + {task_id}* 前缀扫描）。
+    """列出某 task 在磁盘上相关的文件/目录（manifest 记录 + 任务文件夹扫描）。
 
-    返回 {task_id, manifest_paths, existing}，existing 是真实存在的文件/目录列表。
+    返回 {task_id, manifest_paths, existing, meta}，existing 是真实存在的文件/目录列表。
     """
     manifest = get_task_paths(task_id)
     roots = [get_note_dir(), get_data_dir()]
@@ -201,73 +243,64 @@ def list_task_files(task_id: str) -> Dict:
         resolved = _safe_resolve(p, roots)
         if resolved is not None and (resolved.exists() or resolved.is_symlink()):
             existing.append(str(resolved))
-    note_dir = get_note_dir()
-    if note_dir.exists():
-        for f in note_dir.glob(f"{task_id}*"):
-            existing.append(str(f))
-    dl = note_dir / f"dl_{task_id}"
-    if dl.exists():
-        existing.append(str(dl))
+    # 任务文件夹（task_dir）整体 + raw/ gen/ 下的真实文件
+    tdir = task_dir(task_id)
+    if tdir.exists():
+        existing.append(str(tdir))
+        for sub in ("raw", "gen"):
+            s = tdir / sub
+            if s.exists():
+                existing.append(str(s))
+                existing.extend(str(f) for f in s.rglob("*") if f.is_file())
     # 去重保序
     existing = list(dict.fromkeys(existing))
-    return {"task_id": task_id, "manifest_paths": manifest, "existing": existing}
+    return {
+        "task_id": task_id,
+        "manifest_paths": manifest,
+        "existing": existing,
+        "meta": get_task_meta(task_id),
+    }
 
 
 # ---------------- 清理 ----------------
 
 def cleanup_task_files(task_id: str, include_note: bool = False) -> Dict:
-    """按 task 清理中间产物；include_note=True 时连最终笔记（note_dir/note.md）一起删。
+    """按 task 清理中间产物；include_note=True 时连最终笔记（gen/note.md）一起删。
 
-    只删 manifest 记录 / note_results/{task_id}* / dl_{task_id} 的路径，
-    且 resolve 校验在数据目录内。返回统计（deleted/missing/errors/note_kept）。
+    数据层重构后以任务文件夹 task_dir 为边界：
+      - include_note=False：删 raw/（下载媒体）+ gen/ 内除 note.md 外的一切；保留 task_dir + status/manifest/result。
+      - include_note=True：删整个 task_dir + manifest + 全局索引（video_tasks）记录。
+    返回统计（deleted/missing/errors/note_kept）。
     """
     note_dir = get_note_dir()
     roots = [note_dir, get_data_dir()]
     notes = _note_paths(task_id)
+    tdir = task_dir(task_id)
 
     to_delete: set = set()
 
-    # 1. manifest 记录的路径（note 之外；越界/解析失败 → 拒绝）
-    for p in get_task_paths(task_id):
-        resolved = _safe_resolve(p, roots)
-        if resolved is None:
-            continue
-        if not include_note and resolved in notes:
-            continue
-        to_delete.add(resolved)
-
-    # 2. 前缀模式：note_results/{task_id}* 文件
-    if note_dir.exists():
-        for f in note_dir.glob(f"{task_id}*"):
-            if f.name == f"{task_id}.manifest.json" and not include_note:
-                continue  # include_note=False 时保留 manifest（后续还能查/整删）
-            if f.is_file():
-                to_delete.add(f)
-            elif f.is_dir():
-                if include_note:
-                    to_delete.add(f)  # 整个便携笔记目录
-                else:
-                    # 保留 note.md，删中间子目录（Assets/ frames/ 等）
-                    for child in f.iterdir():
-                        if child.name == "note.md":
-                            continue
-                        to_delete.add(child)
-
-    # 3. dl_{task_id} 下载目录
-    dl = note_dir / f"dl_{task_id}"
-    if dl.exists():
-        to_delete.add(dl)
-
-    # 4. include_note=True：连便携默认笔记目录/note_dir 一起删，并删 manifest
     if include_note:
-        to_delete.update(notes)
-        portable = note_dir / task_id
-        if portable.exists():
-            to_delete.add(portable)
+        # 整删：任务文件夹 + manifest + 全局索引
+        if tdir.exists():
+            to_delete.add(tdir)
         remove_manifest(task_id)
+        try:
+            from app.db.video_task_dao import delete_task
+
+            delete_task(task_id)
+        except Exception:
+            pass
     else:
-        # 双保险：note 绝不进删除集合
-        to_delete -= notes
+        # 保留 note：删 raw/ 整个 + gen/ 内非 note.md 的子项
+        raw = tdir / "raw"
+        if raw.exists():
+            to_delete.add(raw)
+        gen = tdir / "gen"
+        if gen.exists():
+            for child in gen.iterdir():
+                if child in notes or child.name == "note.md":
+                    continue
+                to_delete.add(child)
 
     stats = _delete_all(to_delete)
     return {
@@ -283,7 +316,7 @@ def cleanup_all_files(include_config: bool = False, include_models: bool = False
 
     默认保留 config/（LLM key / cookie / 转写设置）与 models/（模型可复用、重下成本高）；
     include_config=True 时连 config/ 一起清；include_models=True 时连 models/ 一起清。
-    数据库记录（bili_note.db）不动。
+    同步清空 video_tasks 全局索引（任务目录删了，索引记录一并清）。
     """
     result: Dict = {"cleaned": {}, "kept": []}
 
@@ -296,6 +329,15 @@ def cleanup_all_files(include_config: bool = False, include_models: bool = False
     _empty(get_note_dir(), "note_results")
     _empty(get_screenshots_dir(), "static/screenshots")
     _empty(get_logs_dir(), "logs")
+    # 同步清空全局任务索引（尽力而为）
+    try:
+        from app.db.video_task_dao import list_tasks as _list
+        from app.db.video_task_dao import delete_task
+
+        for t in _list():
+            delete_task(t["task_id"])
+    except Exception:
+        pass
 
     if include_config:
         _empty(get_config_dir(), "config")
