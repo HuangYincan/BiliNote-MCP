@@ -402,6 +402,12 @@ def _wizard_transcriber(inq) -> None:
                 else:
                     mark = ""
                 choices.append({"name": base + mark, "value": val})
+            choices.append(
+                {"name": f"音频预处理（16kHz 归一 + 超长分块）：{'开' if cfg.get('enable_preprocess') else '关'}", "value": "preprocess"}
+            )
+            choices.append(
+                {"name": f"说话人分离（pyannote，可选）：{'开' if cfg.get('diarization') else '关'}", "value": "diarization"}
+            )
             choices.append({"name": "← 返回主菜单", "value": "back"})
             pick = inq.select(
                 message=f"当前引擎：{cur}",
@@ -411,6 +417,46 @@ def _wizard_transcriber(inq) -> None:
             ).execute()
             if pick == "back":
                 return
+            if pick == "preprocess":
+                _show_header("音频预处理")
+                print(
+                    f"{_DIM}转写前先把音频归一化为 16kHz mono wav；超长音频自动分块（云端引擎受益；"
+                    f"faster-whisper 自带 VAD 也有帮助）。零额外依赖。{_RESET}",
+                    file=sys.stdout,
+                )
+                cur_on = bool(cfg.get("enable_preprocess", False))
+                on = inq.confirm(message="启用音频预处理？", default=cur_on, keybindings=_KB).execute()
+                TranscriberConfigManager().update_config(cfg["transcriber_type"], enable_preprocess=bool(on))
+                print(f"{_GREEN}✓ 音频预处理：{'开' if on else '关'}{_RESET}", file=sys.stdout)
+                continue
+            if pick == "diarization":
+                _show_header("说话人分离")
+                print(
+                    f"{_DIM}用 pyannote 给转写标说话人（会议纪要/多人口播）。需要 torch + HF_TOKEN + 在"
+                    f"huggingface.co 同意模型授权（重依赖，可选安装）。{_RESET}",
+                    file=sys.stdout,
+                )
+                cur_on = bool(cfg.get("diarization", False))
+                on = inq.confirm(message="启用说话人分离？", default=cur_on, keybindings=_KB).execute()
+                if on:
+                    import importlib.util
+
+                    if importlib.util.find_spec("pyannote") is None:
+                        print(
+                            f"{_YELLOW}⚠ 当前环境未装 pyannote（可选依赖）。{_RESET}",
+                            file=sys.stdout,
+                        )
+                        print(
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                            f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。{_RESET}",
+                            file=sys.stdout,
+                        )
+                    hf = inq.secret(message="HuggingFace token（HF_TOKEN，留空跳过）", keybindings=_KB).execute()
+                    if hf:
+                        set_app_config("hf_token", hf)
+                TranscriberConfigManager().update_config(cfg["transcriber_type"], diarization=bool(on))
+                print(f"{_GREEN}✓ 说话人分离：{'开' if on else '关'}{_RESET}", file=sys.stdout)
+                continue
             if pick in ("fast-whisper", "mlx-whisper"):
                 _show_header(f"选择 {pick} 模型尺寸")
                 sizes = [{"name": s, "value": s} for s in _WHISPER_SIZES]
@@ -726,6 +772,21 @@ def _setup_cli_fallback() -> None:
             _download_whisper(size)
         except Exception as e:
             print(f"   ⚠ 下载失败：{e}", file=sys.stdout)
+    print("   音频预处理：转写前把音频归一化为 16kHz mono wav，超长自动分块（零额外依赖）", file=sys.stdout)
+    cur_pre = bool(TranscriberConfigManager().get_config().get("enable_preprocess", False))
+    pre = _ask(f"   启用音频预处理？[y/N]（当前 {'开' if cur_pre else '关'}）", default="Y" if cur_pre else "N").lower() == "y"
+    TranscriberConfigManager().update_config(eng, enable_preprocess=bool(pre))
+    print(f"   ✓ 音频预处理：{'开' if pre else '关'}", file=sys.stdout)
+    print("   说话人分离：pyannote 给转写标说话人（重依赖：torch + HF_TOKEN + 模型授权）", file=sys.stdout)
+    cur_dia = bool(TranscriberConfigManager().get_config().get("diarization", False))
+    dia = _ask(f"   启用说话人分离？[y/N]（当前 {'开' if cur_dia else '关'}）", default="Y" if cur_dia else "N").lower() == "y"
+    if dia:
+        import importlib.util
+
+        if importlib.util.find_spec("pyannote") is None:
+            print("   ⚠ 未装 pyannote：`uvx --from ... --with pyannote.audio --with torch` 安装", file=sys.stdout)
+    TranscriberConfigManager().update_config(eng, diarization=bool(dia))
+    print(f"   ✓ 说话人分离：{'开' if dia else '关'}", file=sys.stdout)
 
     print("\n③ 其他（视频理解默认 / 评论·弹幕整合默认 / 笔记默认）：", file=sys.stdout)
     print("   视频理解把画面按间隔抽帧发给多模态 LLM（需 qwen-vl / gpt-4o 等；会下载整个视频、比纯转写慢）", file=sys.stdout)
@@ -894,6 +955,10 @@ def _transcriber_cli(argv) -> None:
     p_dl = sub.add_parser("download", help="下载本地 whisper 模型")
     p_dl.add_argument("size", choices=_WHISPER_SIZES)
     p_dl.add_argument("--engine", default="fast-whisper", choices=("fast-whisper", "mlx-whisper"), help="fast-whisper（默认）或 mlx-whisper（macOS）")
+    p_pre = sub.add_parser("preprocess", help="音频预处理开关（16kHz 归一 + 超长分块）")
+    p_pre.add_argument("state", choices=("on", "off"), help="on=启用 / off=关闭")
+    p_dia = sub.add_parser("diarization", help="说话人分离开关（pyannote 可选）")
+    p_dia.add_argument("state", choices=("on", "off"), help="on=启用 / off=关闭")
 
     opts = parser.parse_args(argv)
     mgr = TranscriberConfigManager()
@@ -902,6 +967,8 @@ def _transcriber_cli(argv) -> None:
         ready = mgr.is_model_ready()
         print(f"当前引擎: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
         print(f"就绪: {'✓ ready' if ready['ready'] else '✗ ' + ready['reason']}", file=sys.stdout)
+        print(f"音频预处理: {'开' if cfg.get('enable_preprocess') else '关'}", file=sys.stdout)
+        print(f"说话人分离: {'开' if cfg.get('diarization') else '关'}", file=sys.stdout)
         print(f"可选引擎: {', '.join(_TRANSCRIBER_ENGINES)}", file=sys.stdout)
         print(f"whisper 尺寸: {', '.join(_WHISPER_SIZES)}", file=sys.stdout)
     elif opts.cmd == "set":
@@ -920,6 +987,33 @@ def _transcriber_cli(argv) -> None:
         except Exception as e:
             print(f"✗ 下载失败: {e}（可稍后重试或换小尺寸）", file=sys.stderr)
             sys.exit(1)
+    elif opts.cmd == "preprocess":
+        on = opts.state == "on"
+        cfg = mgr.update_config(mgr.get_config()["transcriber_type"], enable_preprocess=on)
+        print(f"音频预处理: {'开' if cfg.get('enable_preprocess') else '关'}", file=sys.stdout)
+        if on:
+            print("（转写前会先把音频归一化为 16kHz mono wav；超长自动分块）", file=sys.stdout)
+    elif opts.cmd == "diarization":
+        on = opts.state == "on"
+        cfg = mgr.update_config(mgr.get_config()["transcriber_type"], diarization=on)
+        print(f"说话人分离: {'开' if cfg.get('diarization') else '关'}", file=sys.stdout)
+        if on:
+            import importlib.util
+
+            if importlib.util.find_spec("pyannote") is None:
+                print(
+                    f"⚠ 当前环境未装 pyannote（可选依赖）。",
+                    file=sys.stdout,
+                )
+                print(
+                    f"  `uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                    f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。",
+                    file=sys.stdout,
+                )
+                print(
+                    "  另需 HF_TOKEN 并在 huggingface.co 同意 pyannote 模型授权（diarize_media 时用）。",
+                    file=sys.stdout,
+                )
 
 
 def _login_cli(argv) -> None:

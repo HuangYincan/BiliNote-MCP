@@ -995,14 +995,29 @@ def get_transcriber_config() -> str:
 
 
 @mcp.tool()
-def set_transcriber(transcriber_type: str, whisper_model_size: Optional[str] = None) -> str:
-    """切换转写引擎。
+def set_transcriber(
+    transcriber_type: str,
+    whisper_model_size: Optional[str] = None,
+    enable_preprocess: Optional[bool] = None,
+    diarization: Optional[bool] = None,
+    diarization_speakers: Optional[int] = None,
+) -> str:
+    """切换转写引擎 / 音频增强配置。
 
     transcriber_type: fast-whisper（本地，需下载模型）/ groq（云端）/ bcut / kuaishou / mlx-whisper。
-    切到 fast-whisper 时可用 whisper_model_size 指定模型尺寸（tiny/base/small/medium/large-v3）。
+    - whisper_model_size: 切到 fast-whisper 时的模型尺寸；
+    - enable_preprocess: 音频预处理开关（16kHz 归一 + 超长分块，默认关）；
+    - diarization: 说话人分离开关（pyannote 可选，默认关）；
+    - diarization_speakers: 说话人数提示（可选，自动检测时省略）。
     """
     mgr = TranscriberConfigManager()
-    cfg = mgr.update_config(transcriber_type, whisper_model_size)
+    cfg = mgr.update_config(
+        transcriber_type,
+        whisper_model_size,
+        enable_preprocess=enable_preprocess,
+        diarization=diarization,
+        diarization_speakers=diarization_speakers,
+    )
     return json.dumps(cfg, ensure_ascii=False)
 
 
@@ -1097,6 +1112,11 @@ def health_check() -> str:
         {"size": s, "downloaded": check_whisper_model_exists(s, "whisper")}
         for s in WHISPER_MODEL_SIZES
     ]
+    # 音频增强可选依赖就绪状态
+    import importlib.util
+
+    noisereduce_ok = importlib.util.find_spec("noisereduce") is not None
+    pyannote_ok = importlib.util.find_spec("pyannote") is not None
     return json.dumps(
         {
             "ffmpeg": "ok" if ffmpeg_ok else "missing",
@@ -1108,6 +1128,12 @@ def health_check() -> str:
                 "reason": ready["reason"],
             },
             "whisper_models": models,
+            "audio_enhance": {
+                "enable_preprocess": bool(cfg.get("enable_preprocess")),
+                "diarization": bool(cfg.get("diarization")),
+                "noisereduce_installed": noisereduce_ok,
+                "pyannote_installed": pyannote_ok,
+            },
             "data_dir": str(DATA_DIR),
         },
         ensure_ascii=False,
