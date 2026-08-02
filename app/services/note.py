@@ -25,10 +25,10 @@ from app.exceptions.provider import ProviderError
 from app.gpt.base import GPT
 from app.gpt.gpt_factory import GPTFactory
 from app.models.audio_model import AudioDownloadResult
-from app.models.gpt_model import GPTSource
 from app.models.model_config import ModelConfig
 from app.models.notes_model import AudioDownloadResult, NoteResult
 from app.models.transcriber_model import TranscriptResult, TranscriptSegment
+from app.services import pipeline
 from app.services.constant import SUPPORT_PLATFORM_MAP
 from app.services.provider import ProviderService
 from app.transcriber.base import Transcriber
@@ -609,15 +609,21 @@ class NoteGenerator:
             except Exception as e:
                 logger.warning(f"加载转写缓存失败，将重新获取：{e}")
 
-        # 1. 先尝试获取平台字幕
+        # 1. 先尝试获取平台字幕（委托 pipeline 步骤层，返回 asdict dict）
         logger.info("尝试获取平台字幕...")
         try:
-            transcript = downloader.download_subtitles(video_url)
-            if transcript and transcript.segments:
+            data = pipeline.fetch_subtitles(video_url)
+            if data:
+                transcript = TranscriptResult(
+                    language=data.get("language"),
+                    full_text=data["full_text"],
+                    segments=[TranscriptSegment(**seg) for seg in data.get("segments", [])],
+                    raw=data.get("raw"),
+                )
                 logger.info(f"成功获取平台字幕，共 {len(transcript.segments)} 段")
-                # 缓存结果
+                # 缓存结果（pipeline 返回的 asdict dict，与 asdict(transcript) 等价）
                 transcript_cache_file.write_text(
-                    json.dumps(asdict(transcript), ensure_ascii=False, indent=2),
+                    json.dumps(data, ensure_ascii=False, indent=2),
                     encoding="utf-8"
                 )
                 return transcript
@@ -667,8 +673,16 @@ class NoteGenerator:
             self.transcriber = self._init_transcriber()
         try:
             logger.info("开始转写音频")
-            transcript = self.transcriber.transcript(file_path=audio_file)
-            transcript_cache_file.write_text(json.dumps(asdict(transcript), ensure_ascii=False, indent=2), encoding="utf-8")
+            # 委托 pipeline 步骤层（返回 asdict dict，与 asdict(transcript) 写缓存等价）
+            transcript_dict = pipeline.transcribe_audio(audio_file, transcriber=self.transcriber)
+            transcript_cache_file.write_text(json.dumps(transcript_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+            # 重建 TranscriptResult，保持返回类型一致（generate 下游仍按对象访问）
+            transcript = TranscriptResult(
+                language=transcript_dict.get("language"),
+                full_text=transcript_dict["full_text"],
+                segments=[TranscriptSegment(**seg) for seg in transcript_dict.get("segments", [])],
+                raw=transcript_dict.get("raw"),
+            )
             logger.info(f"转写并缓存成功 ({transcript_cache_file})")
             return transcript
         except Exception as exc:
@@ -710,22 +724,29 @@ class NoteGenerator:
         task_id = markdown_cache_file.stem
         self._update_status(task_id, TaskStatus.SUMMARIZING)
 
-        source = GPTSource(
-            title=audio_meta.title,
-            segment=transcript.segments,
-            tags=audio_meta.raw_info.get("tags", []),
-            screenshot=screenshot,
-            video_img_urls=video_img_urls,
-            comments_danmaku=comments_danmaku,
-            link=link,
-            _format=formats,
-            style=style,
-            extras=extras,
-            checkpoint_key=task_id,
-        )
+        # 组装素材包，委托 pipeline 步骤层做 LLM 总结（GPTSource 构造收敛到 pipeline）
+        material = {
+            "title": audio_meta.title if audio_meta else None,
+            "transcript": asdict(transcript) if transcript else None,
+            "frames": list(self.video_img_urls),  # 已是 data URI，pipeline 兼容直接透传
+            "comments_danmaku": comments_danmaku,
+            "video_path": str(self.video_path) if self.video_path else None,
+            "audio_path": audio_meta.file_path if audio_meta else None,
+        }
 
         try:
-            markdown = gpt.summarize(source, cancel_event=cancel_event)
+            markdown = pipeline.summarize_material(
+                material,
+                gpt=gpt,
+                style=style,
+                extras=extras,
+                formats=formats,
+                screenshot=screenshot,
+                link=link,
+                tags=audio_meta.raw_info.get("tags", []) if audio_meta else [],
+                checkpoint_key=task_id,
+                cancel_event=cancel_event,
+            )
             markdown_cache_file.write_text(markdown, encoding="utf-8")
             logger.info(f"GPT 总结并缓存成功 ({markdown_cache_file})")
             return markdown
@@ -740,48 +761,15 @@ class NoteGenerator:
         comments_limit: int,
     ) -> Optional[str]:
         """
-        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本。
+        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本（委托 pipeline 步骤层）。
 
         抓取失败（含 fetcher 模块缺失/接口异常）只记日志，返回 None，不阻断笔记生成。
-        BilibiliCommentFetcher 的 fetch_* 返回 {"ok": bool, ...}，绝无异常抛出。
 
         :param video_url: 视频链接
         :param comments_limit: 抓取评论条数上限
         :return: 拼接好的弹幕+评论文本；失败或无数据时返回 None
         """
-        try:
-            from app.downloaders.bilibili_comment import BilibiliCommentFetcher
-
-            fetcher = BilibiliCommentFetcher()
-        except Exception as exc:
-            logger.warning(f"BilibiliCommentFetcher 不可用，跳过弹幕/评论抓取: {exc}")
-            return None
-
-        parts: List[str] = []
-
-        danmaku = fetcher.fetch_danmaku(str(video_url))
-        if danmaku.get("ok"):
-            summary = danmaku.get("danmaku_summary") or ""
-            if summary:
-                parts.append(f"【弹幕】\n{summary}")
-        else:
-            logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
-
-        comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
-        if comments.get("ok"):
-            rows = comments.get("comments") or []
-            if rows:
-                lines = [
-                    f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
-                    for c in rows
-                ]
-                parts.append("【热门评论】\n" + "\n".join(lines))
-        else:
-            logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
-
-        if not parts:
-            return None
-        return "\n\n".join(parts)
+        return pipeline.fetch_comments_danmaku(str(video_url), comments_limit)
 
     def _build_note_material(
         self,
