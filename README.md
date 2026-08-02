@@ -1,5 +1,3 @@
----
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/cover-dark.png"/>
