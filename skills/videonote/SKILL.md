@@ -1,22 +1,22 @@
 ---
-name: bilinote
-description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/YouTube/抖音/快手）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。
+name: videonote
+description: 用 VideoNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/YouTube/抖音/快手）生成 AI Markdown 笔记。触发词：「生成视频笔记」「视频 → 笔记」「帮我给这个视频做笔记」「从 XX 链接做笔记」。
 ---
 
-# BiliNote-Mcp —— 视频 → AI 笔记
+# VideoNote-Mcp —— 视频 → AI 笔记
 
 ## ⚡ 强制规则（违反 = 任务失败，不可跳过）
 
 0. **任务开始必须先问「全自动」还是「手动」**：
    - **全自动**：用 setup 默认解析出本次任务的**完整参数清单**，**一次性列出给用户确认**（不逐个问；用户要改再以提问方式改）—— 见规则 2。`generate_note` / `prepare_note_material` 不传这些参数即套默认。
    - **手动**：逐个确认参数（见规则 2）后再调用 `generate_note`。
-1. **必须用 MCP 工具**（`generate_note` / `prepare_note_material` / `get_task_status` / `list_providers` / `cancel_note` 等），**不要用 Bash/curl 手工调后端**。唯一例外：让用户在独立终端跑 `bilinote-mcp providers set`（填 key）、`bilinote-mcp login bilibili`（B站扫码）—— 这些本就该在终端做。
+1. **必须用 MCP 工具**（`generate_note` / `prepare_note_material` / `get_task_status` / `list_providers` / `cancel_note` 等），**不要用 Bash/curl 手工调后端**。唯一例外：让用户在独立终端跑 `videonote providers set`（填 key）、`videonote login bilibili`（B站扫码）—— 这些本就该在终端做。
 2. **确认参数依模式而定**：
    - **手动模式**：用户明确指定（或说「你定」）之前，禁止调用 `generate_note` / `prepare_note_material`。必须问：
      - **LLM 模型**：`list_models(provider_id)` 拿到列表 → 呈现给用户选一个；**或选「AGENT 直接生成」**（`agent_direct`：不用配置 LLM、AGENT 自己写笔记，见强制规则 4；用户要则走工作流分支 A）；
      - **笔记风格**：列出真实 9 种让用户选 —— `minimal` 精简 / `detailed` 详细 / `academic` 学术 / `tutorial` 教程 / `xiaohongshu` 小红书 / `life_journal` 生活向 / `task_oriented` 任务导向 / `business` 商业风格 / `meeting_minutes` 会议纪要，或自定义（描述经 `extras` 传入）；
      - **是否视频理解** + 帧间隔秒数（默认 6，需多模态模型）；
-     - **是否整合弹幕+评论区观点** + 评论条数（默认 20，需 B 站 SESSDATA，没配引导用户 `bilinote-mcp login bilibili`）；
+     - **是否整合弹幕+评论区观点** + 评论条数（默认 20，需 B 站 SESSDATA，没配引导用户 `videonote login bilibili`）；
      - **是否插图片** + 笔记保存位置（`notes_dir`）；
    - **全自动模式**：不逐个问，但**先用 setup 默认解析出本次任务将用的完整参数清单，一次性列给用户确认**（每项带默认值）：
      1. **生成方式 / LLM 模型**：默认用配置 LLM 的默认模型（`list_providers()` 有 key 的供应商默认模型）；**或改选「AGENT 直接生成」**（`agent_direct`，不走配置 LLM、AGENT 自己写笔记，见规则 4 / 分支 A）；
@@ -31,7 +31,7 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
 3. **单视频一回合一个；多视频用 subagent 并行**：
    - 单视频：一次 `generate_note`（或 `prepare_note_material`）→ 轮询完成 → 呈现。
    - **多视频（>1 个）：主 agent 对每个视频起一个 subagent**，每个 subagent 独立负责「提交 → `get_task_status` 轮询到 SUCCESS → 汇报」；主 agent 汇总呈现。**主 agent 自己绝不在同一回合连续调用多个 `generate_note` / `prepare_note_material`**。
-   - 并发上限：最多 `BILINOTE_MAX_WORKERS`（默认 3）个进行中任务，超出 server 会拒绝。
+   - 并发上限：最多 `VIDEONOTE_MAX_WORKERS`（默认 3）个进行中任务，超出 server 会拒绝。
 4. **AGENT 直接生成（`agent_direct`）—— AGENT 自己写笔记，不调用配置 LLM**：
    1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id` → `get_task_status` 轮询到 `SUCCESS`；
    2. 读 `result`（素材包）：`transcript.full_text`（完整转写）、`frames`（file:// 图片，多模态模型下用 **Read** 看图）、`comments_danmaku`（评论/弹幕）；

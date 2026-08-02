@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # ---------------- 目录解析（读环境变量，测试可注入） ----------------
 
 def get_data_dir() -> Path:
-    """数据根目录（config.setup_environment 设置 BILINOTE_DATA_DIR）。"""
-    return Path(os.getenv("BILINOTE_DATA_DIR", "data")).expanduser().resolve()
+    """数据根目录（config.setup_environment 设置 VIDEONOTE_DATA_DIR）。"""
+    return Path(os.getenv("VIDEONOTE_DATA_DIR", "data")).expanduser().resolve()
 
 
 def get_note_dir() -> Path:
@@ -52,7 +52,7 @@ def get_screenshots_dir() -> Path:
 
 def get_config_dir() -> Path:
     """配置目录（LLM key / cookie / 转写设置 / app_config）。"""
-    return Path(os.getenv("BILINOTE_CONFIG_DIR", str(get_data_dir() / "config"))).expanduser().resolve()
+    return Path(os.getenv("VIDEONOTE_CONFIG_DIR", str(get_data_dir() / "config"))).expanduser().resolve()
 
 
 def get_logs_dir() -> Path:
@@ -62,7 +62,7 @@ def get_logs_dir() -> Path:
 
 def get_models_dir() -> Path:
     """模型缓存目录（whisper/mlx；全局清理默认保留）。"""
-    return Path(os.getenv("BILINOTE_MODEL_DIR", str(get_data_dir() / "models"))).expanduser().resolve()
+    return Path(os.getenv("VIDEONOTE_MODEL_DIR", str(get_data_dir() / "models"))).expanduser().resolve()
 
 
 def manifest_path(task_id: str) -> Path:

@@ -8,9 +8,9 @@ class TranscriberConfigManager:
     """管理转写器配置，存储在 JSON 文件中，支持前端动态修改。"""
 
     def __init__(self, filepath: str = None):
-        # 默认落在 BILINOTE_CONFIG_DIR（由 bilinote_mcp.config 设置），避免依赖 CWD
+        # 默认落在 VIDEONOTE_CONFIG_DIR（由 videonote_mcp.config 设置），避免依赖 CWD
         if filepath is None:
-            filepath = str(Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "transcriber.json")
+            filepath = str(Path(os.environ.get("VIDEONOTE_CONFIG_DIR", "config")) / "transcriber.json")
         self.path = Path(filepath)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -47,11 +47,11 @@ class TranscriberConfigManager:
             "enable_preprocess": bool(
                 data.get(
                     "enable_preprocess",
-                    os.getenv("BILINOTE_ENABLE_PREPROCESS", "0") in ("1", "true", "True"),
+                    os.getenv("VIDEONOTE_ENABLE_PREPROCESS", "0") in ("1", "true", "True"),
                 )
             ),
             "diarization": bool(
-                data.get("diarization", os.getenv("BILINOTE_DIARIZATION", "0") in ("1", "true", "True"))
+                data.get("diarization", os.getenv("VIDEONOTE_DIARIZATION", "0") in ("1", "true", "True"))
             ),
             "diarization_speakers": data.get("diarization_speakers"),
         }
@@ -120,8 +120,8 @@ class TranscriberConfigManager:
                 result["ready"] = False
                 result["reason"] = (
                     "funasr 不可用：未安装 funasr 包。请用 "
-                    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with funasr --with torch`"
-                    "（或 `uvx --from ... --with funasr --with torch`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with funasr --with torch`"
+                    "（或 `uvx --from ... --with funasr --with torch`）安装；或切换转写引擎 `videonote transcriber set groq` / fast-whisper"
                 )
                 return result
             return result  # funasr 模型由引擎首次构造时自动下载，无需预检模型文件
@@ -132,8 +132,8 @@ class TranscriberConfigManager:
             if ttype == "mlx-whisper":
                 result["reason"] = (
                     f"{ttype} 不可用：未安装 mlx_whisper 包。请用 "
-                    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
-                    "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with mlx-whisper`"
+                    "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `videonote transcriber set groq` / fast-whisper"
                 )
             else:
                 result["reason"] = f"{ttype} 不可用：未安装 {pkg} 包"
@@ -167,7 +167,7 @@ class TranscriberConfigManager:
             + (
                 "，正在下载中，请稍候"
                 if downloading
-                else f"，请先执行 `bilinote-mcp transcriber download {size}` 下载"
+                else f"，请先执行 `videonote transcriber download {size}` 下载"
             )
         )
         return result

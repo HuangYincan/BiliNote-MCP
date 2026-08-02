@@ -4,7 +4,7 @@ task_manifest 清理功能测试（不碰真实网络/数据库，只用临时�
 运行：
     cd /Users/acccan/.claude/jobs/80e51cb0/tmp/wt-an-cleanup
     PYTHONPATH=/Users/acccan/.claude/jobs/80e51cb0/tmp/wt-an-cleanup \
-    /Users/acccan/hyc/tools/BiliNote-Mcp/.venv/bin/python tests/test_task_manifest.py
+    /Users/acccan/hyc/tools/VideoNote-Mcp/.venv/bin/python tests/test_task_manifest.py
 """
 
 import os
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 数据层重构：cleanup_all_files 会同步清空 video_tasks 全局索引 → 用隔离 DB
-os.environ["DATABASE_URL"] = "sqlite:////tmp/bilinote_test_task_manifest.db"
+os.environ["DATABASE_URL"] = "sqlite:////tmp/videonote_test_task_manifest.db"
 
 from app.utils.task_manifest import (  # noqa: E402
     cleanup_all_files,
@@ -42,18 +42,18 @@ class TaskManifestTest(unittest.TestCase):
         self.models = self.root / "models"
         for d in (self.note_dir, self.screens, self.cfg, self.logs, self.models):
             d.mkdir(parents=True, exist_ok=True)
-        os.environ["BILINOTE_DATA_DIR"] = str(self.root)
+        os.environ["VIDEONOTE_DATA_DIR"] = str(self.root)
         os.environ["NOTE_OUTPUT_DIR"] = str(self.note_dir)
         os.environ["IMAGE_OUTPUT_DIR"] = str(self.screens)
-        os.environ["BILINOTE_CONFIG_DIR"] = str(self.cfg)
+        os.environ["VIDEONOTE_CONFIG_DIR"] = str(self.cfg)
 
     def tearDown(self):
         self._tmp.cleanup()
         for k in (
-            "BILINOTE_DATA_DIR",
+            "VIDEONOTE_DATA_DIR",
             "NOTE_OUTPUT_DIR",
             "IMAGE_OUTPUT_DIR",
-            "BILINOTE_CONFIG_DIR",
+            "VIDEONOTE_CONFIG_DIR",
         ):
             os.environ.pop(k, None)
 

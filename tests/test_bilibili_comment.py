@@ -4,8 +4,8 @@ BilibiliCommentFetcher 测试（mock requests.get，不碰真实网络）。
 运行：
     cd /Users/acccan/.claude/jobs/80e51cb0/tmp/wt-fetcher
     PYTHONPATH=/Users/acccan/.claude/jobs/80e51cb0/tmp/wt-fetcher \
-    BILINOTE_CONFIG_DIR=/tmp/bn_test_cfg BILINOTE_DATA_DIR=/tmp/bn_test_data \
-    /Users/acccan/hyc/tools/BiliNote-Mcp/.venv/bin/python tests/test_bilibili_comment.py
+    VIDEONOTE_CONFIG_DIR=/tmp/bn_test_cfg VIDEONOTE_DATA_DIR=/tmp/bn_test_data \
+    /Users/acccan/hyc/tools/VideoNote-Mcp/.venv/bin/python tests/test_bilibili_comment.py
 """
 
 import json
@@ -15,8 +15,8 @@ import unittest
 from unittest.mock import patch
 
 # 测试配置落到临时目录，避免污染仓库 config/ 与 logs/
-os.environ.setdefault("BILINOTE_CONFIG_DIR", "/tmp/bn_test_cfg")
-os.environ.setdefault("BILINOTE_DATA_DIR", "/tmp/bn_test_data")
+os.environ.setdefault("VIDEONOTE_CONFIG_DIR", "/tmp/bn_test_cfg")
+os.environ.setdefault("VIDEONOTE_DATA_DIR", "/tmp/bn_test_data")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

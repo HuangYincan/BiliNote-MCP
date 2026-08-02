@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-_DB = "/tmp/bilinote_test_task_index.db"
+_DB = "/tmp/videonote_test_task_index.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{_DB}"
 
 from app.db.init_db import init_db  # noqa: E402

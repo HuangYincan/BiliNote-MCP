@@ -47,7 +47,7 @@ def merge_audio(
     out_dir.mkdir(parents=True, exist_ok=True)
     final_path = out_dir / f"{out_name}.wav"
 
-    tmpdir = Path(tempfile.mkdtemp(prefix="bilinote_merge_"))
+    tmpdir = Path(tempfile.mkdtemp(prefix="videonote_merge_"))
     try:
         # 1) 统一转 16kHz mono wav
         wavs: List[str] = []

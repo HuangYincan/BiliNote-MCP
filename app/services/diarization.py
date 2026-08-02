@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 _DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 _INSTALL_HINT = (
     "说话人分离需要 pyannote.audio（含 torch）。请用 "
-    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
     "--with pyannote.audio --with torch`（或 `uvx --from ... --with pyannote.audio --with torch`）"
     "安装；并在 huggingface.co 同意 pyannote/speaker-diarization-3.1 模型授权，"
-    "设置 HF_TOKEN（`bilinote-mcp transcriber diarization on` 时会引导）。"
+    "设置 HF_TOKEN（`videonote transcriber diarization on` 时会引导）。"
 )
 
 

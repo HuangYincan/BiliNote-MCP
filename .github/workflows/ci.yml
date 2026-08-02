@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev --frozen
       - name: Server imports
-        run: uv run python -c "import bilinote_mcp.server; print('import OK')"
+        run: uv run python -c "import videonote_mcp.server; print('import OK')"
       - name: MCP tools/list over stdio
         run: |
           uv run python - <<'EOF'
@@ -24,7 +24,7 @@ jobs:
           from mcp.client.stdio import stdio_client
 
           async def main():
-              params = StdioServerParameters(command="uv", args=["run", "bilinote-mcp"])
+              params = StdioServerParameters(command="uv", args=["run", "videonote"])
               async with stdio_client(params) as (read, write):
                   async with ClientSession(read, write) as session:
                       await session.initialize()
@@ -35,4 +35,4 @@ jobs:
           asyncio.run(main())
           EOF
       - name: CLI smoke
-        run: uv run bilinote-mcp providers list
+        run: uv run videonote providers list

@@ -1,4 +1,4 @@
-"""pipeline.py —— BiliNote 流水线独立步骤层。
+"""pipeline.py —— 视频流水线独立步骤层。
 
 把 NoteGenerator.generate() 的整体编排拆成**可独立调用**的无状态步骤函数。
 每个函数一个职责、输入输出明确；MCP 工具层与 generate() 共用同一套实现，支持任意组合：

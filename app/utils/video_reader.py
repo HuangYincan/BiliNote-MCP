@@ -152,10 +152,10 @@ class VideoReader:
         temp_frame_dir = None
         temp_grid_dir = None
         if self.frame_dir is None:
-            self.frame_dir = tempfile.mkdtemp(prefix="bilinote_frames_")
+            self.frame_dir = tempfile.mkdtemp(prefix="videonote_frames_")
             temp_frame_dir = self.frame_dir
         if self.grid_dir is None:
-            self.grid_dir = tempfile.mkdtemp(prefix="bilinote_grid_")
+            self.grid_dir = tempfile.mkdtemp(prefix="videonote_grid_")
             temp_grid_dir = self.grid_dir
         try:
             # 确保目录存在（显式传入的目录同样保证可用）

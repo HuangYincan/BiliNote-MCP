@@ -1,6 +1,6 @@
-"""bilinote-mcp 命令行入口（console script 指向本模块的 main）。
+"""videonote 命令行入口（console script 指向本模块的 main）。
 
-- `bilinote-mcp providers ...` → 轻量 CLI：只导入 provider 相关模块
+- `videonote providers ...` → 轻量 CLI：只导入 provider 相关模块
   （不加载下载器/转写器，启动快、无 import 噪音），在终端直接管理 LLM 供应商。
 - 其余参数（含无参数，MCP stdio 模式）→ 懒加载并启动完整 MCP server。
 
@@ -14,8 +14,8 @@ import os
 import sys
 from pathlib import Path
 
-from bilinote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
-from bilinote_mcp.provider_probe import probe_chat, probe_models
+from videonote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
+from videonote_mcp.provider_probe import probe_chat, probe_models
 
 # 轻量 CLI 不该被 import 时的裸 print 污染 stdout，先进程级重定向到 stderr
 _orig_print = builtins.print
@@ -179,7 +179,7 @@ _KB = {"interrupt": [{"key": "left"}]}
 def _show_header(section: str = "") -> None:
     """清屏并重绘标题，避免历史信息堆积。"""
     print("\033[2J\033[H", end="", file=sys.stdout)
-    print(f"{_CYAN}⚙  BiliNote-MCP 配置向导{_RESET}  {_DIM}↑↓ 选择 · 回车确认 · ← 返回 · Ctrl-C 退出{_RESET}", file=sys.stdout)
+    print(f"{_CYAN}⚙  VideoNote 配置向导{_RESET}  {_DIM}↑↓ 选择 · 回车确认 · ← 返回 · Ctrl-C 退出{_RESET}", file=sys.stdout)
     if section:
         print(f"{_YELLOW}▶ {section}{_RESET}", file=sys.stdout)
     print("", file=sys.stdout)
@@ -225,7 +225,7 @@ def _wizard(inq) -> None:
         elif choice == "data":
             _wizard_data(inq)
         else:
-            print(f"{_GREEN}✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`{_RESET}", file=sys.stdout)
+            print(f"{_GREEN}✔ 配置完成。验证：`videonote providers list`、`videonote transcriber list`{_RESET}", file=sys.stdout)
             return
 
 
@@ -451,7 +451,7 @@ def _wizard_transcriber(inq) -> None:
                             file=sys.stdout,
                         )
                         print(
-                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
                             f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。{_RESET}",
                             file=sys.stdout,
                         )
@@ -487,7 +487,7 @@ def _wizard_transcriber(inq) -> None:
                     if mlx_missing:
                         print(
                             f"{_YELLOW}⚠ 当前环境未装 mlx-whisper（可选依赖）。{_RESET}"
-                            f"{_DIM}想用 mlx：`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`，"
+                            f"{_DIM}想用 mlx：`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with mlx-whisper`，"
                             f"或用 `uvx --from ... --with mlx-whisper` 运行。{_RESET}",
                             file=sys.stdout,
                         )
@@ -522,7 +522,7 @@ def _wizard_transcriber(inq) -> None:
                         print(f"{_GREEN}✓ {label} 下载完成{_RESET}", file=sys.stdout)
                         _show_uninstall_option(inq, pick, size, label)
                     except Exception as e:
-                        print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
+                        print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `videonote transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
                     try:
                         input("（按回车返回）", )
                     except (EOFError, KeyboardInterrupt):
@@ -539,7 +539,7 @@ def _wizard_transcriber(inq) -> None:
                             file=sys.stdout,
                         )
                         print(
-                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
                             f"--with funasr --with torch`，或用 `uvx --from ... --with funasr --with torch` 运行。{_RESET}",
                             file=sys.stdout,
                         )
@@ -552,7 +552,7 @@ def _wizard_other(inq) -> None:
         while True:
             from app.services.cookie_manager import CookieConfigManager
 
-            notes_dir = get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
+            notes_dir = get_app_config().get("notes_dir") or os.environ.get("VIDEONOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
             vu_on = bool(get_app_config().get("video_understanding", False))
             vu_int = int(get_app_config().get("video_interval") or 6)
             cm_on = bool(get_app_config().get("include_comments", False))
@@ -644,7 +644,7 @@ def _wizard_other(inq) -> None:
                 else:
                     lim = cur_lim
                 print(f"{_GREEN}✓ 已保存评论/弹幕整合默认：{'开' if on else '关'} / {lim}条{_RESET}", file=sys.stdout)
-                print(f"{_DIM}需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到。{_RESET}", file=sys.stdout)
+                print(f"{_DIM}需 SESSDATA（`videonote login bilibili`），没配则评论拿不到。{_RESET}", file=sys.stdout)
             elif pick == "note-default":
                 _show_header("笔记默认")
                 print(f"{_DIM}不传 style / screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM。{_RESET}", file=sys.stdout)
@@ -860,7 +860,7 @@ def _fallback_test_and_default(pid: str) -> None:
 
 def _setup_cli_fallback() -> None:
     """无 InquirerPy 时的纯文本兜底向导（同功能，输入编号选择）。"""
-    print("=== BiliNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
+    print("=== VideoNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
 
     provs = ProviderService.get_all_providers_safe()
     if provs:
@@ -951,7 +951,7 @@ def _setup_cli_fallback() -> None:
         lim = 20
     set_app_config("comments_limit", lim)
     print(f"   ✓ 评论/弹幕整合默认：{'开' if on else '关'} / {lim}条", file=sys.stdout)
-    print("   需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到", file=sys.stdout)
+    print("   需 SESSDATA（`videonote login bilibili`），没配则评论拿不到", file=sys.stdout)
     print("   笔记默认：不传 style/screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM", file=sys.stdout)
     _NOTE_STYLES = [
         "minimal 精简",
@@ -1035,7 +1035,7 @@ def _setup_cli_fallback() -> None:
 
 def _providers_cli(argv) -> None:
     parser = argparse.ArgumentParser(
-        prog="bilinote-mcp providers",
+        prog="videonote providers",
         description="在终端管理 LLM 供应商（key 不经过 agent 对话，避免泄露给 agent 的 LLM 上游）",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1109,9 +1109,9 @@ _TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper
 
 
 def _transcriber_cli(argv) -> None:
-    """`bilinote-mcp transcriber ...`：在终端管理语音转写引擎。"""
+    """`videonote transcriber ...`：在终端管理语音转写引擎。"""
     parser = argparse.ArgumentParser(
-        prog="bilinote-mcp transcriber",
+        prog="videonote transcriber",
         description="在终端管理语音转写引擎（fast-whisper 本地 / groq / bcut / kuaishou / mlx-whisper）",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1145,7 +1145,7 @@ def _transcriber_cli(argv) -> None:
         cfg = mgr.update_config(opts.engine, opts.size)
         print(f"已切换: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
         if opts.engine == "fast-whisper":
-            print(f"（本地模型还需下载：bilinote-mcp transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
+            print(f"（本地模型还需下载：videonote transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
     elif opts.cmd == "download":
         try:
             if opts.engine == "mlx-whisper":
@@ -1174,7 +1174,7 @@ def _transcriber_cli(argv) -> None:
                     file=sys.stdout,
                 )
                 print(
-                    f"  `uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+                    f"  `uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
                     f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。",
                     file=sys.stdout,
                 )
@@ -1185,7 +1185,7 @@ def _transcriber_cli(argv) -> None:
 
 
 def _login_cli(argv) -> None:
-    """`bilinote-mcp login [bilibili]`：扫码登录 B 站，自动获取并保存 SESSDATA（AI 字幕用）。"""
+    """`videonote login [bilibili]`：扫码登录 B 站，自动获取并保存 SESSDATA（AI 字幕用）。"""
     if argv and argv[0] != "bilibili":
         print(f"未知平台: {argv[0]}（当前支持 bilibili）", file=sys.stderr)
         sys.exit(2)
@@ -1279,7 +1279,7 @@ def _login_cli(argv) -> None:
                 print("已扫码，请在手机上确认登录…", file=sys.stdout)
                 last_status = 86090
             elif st == 86038:
-                print(f"{_YELLOW}二维码已过期，请重新运行 `bilinote-mcp login bilibili`{_RESET}", file=sys.stdout)
+                print(f"{_YELLOW}二维码已过期，请重新运行 `videonote login bilibili`{_RESET}", file=sys.stdout)
                 try:
                     input("（按回车返回）", )
                 except (EOFError, KeyboardInterrupt):
@@ -1290,9 +1290,9 @@ def _login_cli(argv) -> None:
 
 
 def _export_cli(argv) -> None:
-    """`bilinote-mcp export ...`：把已完成任务的转写导出为纯格式（srt/vtt/json）。"""
+    """`videonote export ...`：把已完成任务的转写导出为纯格式（srt/vtt/json）。"""
     parser = argparse.ArgumentParser(
-        prog="bilinote-mcp export",
+        prog="videonote export",
         description="把已完成任务的转写导出为字幕/JSON（确定性渲染，不耗 LLM）",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1317,7 +1317,7 @@ def _export_cli(argv) -> None:
     if formats is None:
         formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
 
-    from bilinote_mcp.export import export_transcript
+    from videonote_mcp.export import export_transcript
 
     result_path = Path(os.environ.get("NOTE_OUTPUT_DIR", "note_results")) / f"{opts.task_id}.json"
     if not result_path.exists():
@@ -1363,11 +1363,11 @@ def main() -> None:
     if len(sys.argv) > 1:
         # 未知参数（如 uvx 选项写错位置）→ 报错而不是静默启动 MCP server
         print(f"未知子命令: {sys.argv[1]}", file=sys.stderr)
-        print(f"用法: bilinote-mcp {' | '.join(known)} ...", file=sys.stderr)
+        print(f"用法: videonote {' | '.join(known)} ...", file=sys.stderr)
         print("（MCP server 模式由客户端无参数启动，不要手动传参）", file=sys.stderr)
         sys.exit(2)
     # MCP 模式（无参数，stdio 客户端启动）：懒加载完整流水线（server.py）
-    from bilinote_mcp.server import main as _server_main
+    from videonote_mcp.server import main as _server_main
 
     _server_main()
 

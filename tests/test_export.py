@@ -23,10 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.models.transcriber_model import TranscriptSegment
 from app.services import pipeline
 
-from bilinote_mcp.export import export_transcript
-from bilinote_mcp.export.json import to_json
-from bilinote_mcp.export.srt import to_srt
-from bilinote_mcp.export.vtt import to_vtt
+from videonote_mcp.export import export_transcript
+from videonote_mcp.export.json import to_json
+from videonote_mcp.export.srt import to_srt
+from videonote_mcp.export.vtt import to_vtt
 
 
 def _segs():
@@ -121,7 +121,7 @@ class ExporterTest(unittest.TestCase):
 
     def test_manifest_recorded(self):
         with tempfile.TemporaryDirectory() as d, mock.patch(
-            "bilinote_mcp.export.exporter.record_task_paths"
+            "videonote_mcp.export.exporter.record_task_paths"
         ) as rec:
             export_transcript({"segments": _segs()}, formats=["srt"], out_dir=d, task_id="t3")
             rec.assert_called_once()

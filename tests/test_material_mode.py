@@ -18,12 +18,12 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-# 确保能 import bilinote_mcp.server（vendored app.* 在其内部 import）
+# 确保能 import videonote_mcp.server（vendored app.* 在其内部 import）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # 必须先 import server：其模块顶层 setup_environment() 会把 NOTE_OUTPUT_DIR 等
 # 环境变量设为数据目录的绝对路径，之后的 app.services.note 才会拿到绝对输出目录
-import bilinote_mcp.server as server
+import videonote_mcp.server as server
 
 from app.models.audio_model import AudioDownloadResult
 from app.models.notes_model import NoteResult

@@ -142,7 +142,7 @@
 
 ## 供应商 / 模型
 
-- `list_providers()` —— 供应商列表（key 掩码）。空 key 让用户在终端 `bilinote-mcp providers set <id> --api-key '...'`。
+- `list_providers()` —— 供应商列表（key 掩码）。空 key 让用户在终端 `videonote providers set <id> --api-key '...'`。
 - `add_provider(name, api_key, base_url, type)` / `update_provider(provider_id, ...)` —— 新增/更新（**填 key 建议走 CLI，不进对话**）。
 - `list_models(provider_id)` —— 实时 /v1/models，回退本地 DB。
 - `add_model(provider_id, model_name)` —— 手动加模型名（接口不可用时）。
@@ -166,12 +166,12 @@
 
 | 场景 | 操作 |
 |------|------|
-| 给内置供应商填 key | 用户在终端 `bilinote-mcp providers set <id> --api-key 'sk-...'`（agent 不碰 key） |
+| 给内置供应商填 key | 用户在终端 `videonote providers set <id> --api-key 'sk-...'`（agent 不碰 key） |
 | 自建/新增供应商 | `add_provider(name, api_key, base_url, type)` |
 | 查看供应商 / 模型 | `list_providers()`（掩码）/ `list_models(provider_id)` |
 | 切本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
 | 切云端转写 | `set_transcriber("groq")`（groq key 用 CLI 填） |
-| B 站登录/AI 字幕/评论 | 用户在终端 `bilinote-mcp login bilibili` 扫码（存 SESSDATA）；或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
+| B 站登录/AI 字幕/评论 | 用户在终端 `videonote login bilibili` 扫码（存 SESSDATA）；或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
 | 本地文件 | `generate_note(video_url="/绝对/路径/x.mp4", platform="local", ...)` |
 | 视频理解默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `video_understanding`/`video_interval` 即套用（默认关/6s） |
 | 评论/弹幕整合默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `include_comments`/`comments_limit` 即套用（默认关/20 条） |

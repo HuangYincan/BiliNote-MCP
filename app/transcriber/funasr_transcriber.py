@@ -24,9 +24,9 @@ from app.utils.path_helper import get_model_dir
 
 _INSTALL_HINT = (
     "FunASR 转写需要 funasr + torch。请用 "
-    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp "
+    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
     "--with funasr --with torch`（或 `uvx --from ... --with funasr --with torch`）安装；"
-    "或切换转写引擎 `bilinote-mcp transcriber set fast-whisper` / groq。"
+    "或切换转写引擎 `videonote transcriber set fast-whisper` / groq。"
 )
 
 

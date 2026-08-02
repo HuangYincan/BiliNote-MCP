@@ -1,4 +1,4 @@
-"""BiliNote-Mcp —— 把 BiliNote 的核心能力封装为 MCP 工具。
+"""VideoNote-Mcp —— 把视频内容处理能力封装为 MCP 工具。
 
 架构：内嵌流水线（`app/` 为 vendored 自上游的核心模块），**无需启动 FastAPI 后端**。
 生成笔记为异步任务：`generate_note` 立即返回 task_id，后台线程执行
@@ -6,7 +6,7 @@
 最终结果写入 note_results/{task_id}.json。
 
 运行时环境（数据目录、DB、输出目录）在 import app.* 之前由 config.setup_environment()
-初始化，详见 bilinote_mcp/config.py。
+初始化，详见 videonote_mcp/config.py。
 """
 import json
 import logging
@@ -22,7 +22,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from bilinote_mcp.config import get_app_config, setup_environment
+from videonote_mcp.config import get_app_config, setup_environment
 
 DATA_DIR = setup_environment()
 
@@ -50,10 +50,10 @@ try:
 except Exception:
     pass  # 重定向失败不致命，保持原样
 
-# app.* 相关导入必须在 setup_environment() 之后 —— 否则 BILINOTE_DATA_DIR/CONFIG_DIR 未设置，
+# app.* 相关导入必须在 setup_environment() 之后 —— 否则 VIDEONOTE_DATA_DIR/CONFIG_DIR 未设置，
 # logger/配置会用 CWD 相对路径建 config/logs（在笔记目录里出现多余文件夹）。
 from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
-from bilinote_mcp.provider_probe import probe_models
+from videonote_mcp.provider_probe import probe_models
 
 # vendored 核心流水线
 from app.db.engine import get_engine
@@ -84,11 +84,11 @@ seed_default_providers()
 
 WHISPER_MODEL_SIZES = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 
-mcp = FastMCP("bilinote")
+mcp = FastMCP("videonote")
 
 # ---------- 后台任务 ----------
 
-_pool = ThreadPoolExecutor(max_workers=int(os.environ.get("BILINOTE_MAX_WORKERS", "3")))
+_pool = ThreadPoolExecutor(max_workers=int(os.environ.get("VIDEONOTE_MAX_WORKERS", "3")))
 
 # 任务注册表：task_id -> (Future, cancel_event)，供 cancel_note 使用（thread-safe）
 _tasks_lock = threading.Lock()
@@ -203,8 +203,8 @@ def _auto_export_transcript(task_id: str, transcript) -> None:
     不涉及 LLM/网络；导出文件自动记入 manifest（供 cleanup_note 清理）。
     """
     try:
-        from bilinote_mcp.config import get_app_config
-        from bilinote_mcp.export import export_transcript
+        from videonote_mcp.config import get_app_config
+        from videonote_mcp.export import export_transcript
 
         default_formats = get_app_config().get("default_export_formats") or []
         if not default_formats or not transcript:
@@ -220,14 +220,14 @@ def _auto_export_transcript(task_id: str, transcript) -> None:
 
 
 def _guard_concurrency() -> None:
-    """并发门禁：进行中任务数达到 BILINOTE_MAX_WORKERS（默认 3）时拒绝新提交。
+    """并发门禁：进行中任务数达到 VIDEONOTE_MAX_WORKERS（默认 3）时拒绝新提交。
 
     与 generate_note / prepare_note_material 内嵌的同一逻辑，供独立流水线步骤
     （transcribe_media / extract_frames / summarize_note）复用，避免无界排队。
     """
     with _tasks_lock:
         active = [tid for tid, f in _task_futures.items() if not f.done()]
-    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    _max_workers = int(os.environ.get("VIDEONOTE_MAX_WORKERS", "3"))
     if len(active) >= _max_workers:
         raise ValueError(
             f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
@@ -406,7 +406,7 @@ def generate_note(
     - include_comments / comments_limit: 是否抓取 B 站弹幕+热门评论作为参考注入 prompt（仅 B 站视频生效）；不传时用 setup 默认（默认关 / 20 条）；显式传入始终覆盖；
     - video_understanding / video_interval / grid_size: 视频理解（需多模态模型）；不传时用 setup ③ 配置的默认（默认关 / 6s）；显式传入始终覆盖；
     - screenshot + format 含 "screenshot": 插入图片，产出便携笔记 note.md + Assets/（相对引用）；不传时用 setup ③ 配置的默认（默认关）；显式传入始终覆盖；
-    - notes_dir: 便携笔记的输出目录（可选；缺省 BILINOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
+    - notes_dir: 便携笔记的输出目录（可选；缺省 VIDEONOTE_NOTES_DIR 环境变量，再缺省 note_results/{task_id}/）。
 
     返回 {task_id, status, platform}。之后用 get_task_status / wait_for_note 查询结果；
     SUCCESS 时 result.note_dir 指向便携笔记目录。
@@ -458,11 +458,11 @@ def generate_note(
     if screenshot is None:
         screenshot = bool(get_app_config().get("default_screenshot", False))
 
-    # 并发上限：最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）—— subagent 并行提交多视频时
+    # 并发上限：最多 VIDEONOTE_MAX_WORKERS 个进行中任务（默认 3）—— subagent 并行提交多视频时
     # 按 pool 容量限制，超出则拒绝（避免无界排队）。stderr 管道死锁已修复，并行提交不再挂起。
     with _tasks_lock:
         active = [tid for tid, f in _task_futures.items() if not f.done()]
-    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    _max_workers = int(os.environ.get("VIDEONOTE_MAX_WORKERS", "3"))
     if len(active) >= _max_workers:
         raise ValueError(
             f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
@@ -487,7 +487,7 @@ def generate_note(
         video_understanding=video_understanding,
         video_interval=video_interval,
         grid_size=grid_size or [],
-        notes_dir=notes_dir or get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or None,
+        notes_dir=notes_dir or get_app_config().get("notes_dir") or os.environ.get("VIDEONOTE_NOTES_DIR") or None,
     )
     cancel_event = threading.Event()
     future = _pool.submit(_run_note_task, task_id, cancel_event, **params)
@@ -546,10 +546,10 @@ def prepare_note_material(
     if comments_limit is None:
         comments_limit = int(get_app_config().get("comments_limit") or 20)
 
-    # 并发上限：与 generate_note 一致，最多 BILINOTE_MAX_WORKERS 个进行中任务（默认 3）
+    # 并发上限：与 generate_note 一致，最多 VIDEONOTE_MAX_WORKERS 个进行中任务（默认 3）
     with _tasks_lock:
         active = [tid for tid, f in _task_futures.items() if not f.done()]
-    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    _max_workers = int(os.environ.get("VIDEONOTE_MAX_WORKERS", "3"))
     if len(active) >= _max_workers:
         raise ValueError(
             f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
@@ -710,7 +710,7 @@ def cleanup_all(include_config: bool = False, include_models: bool = False) -> s
       include_config=True 时连 config/ 一起清；
     - include_models=False（默认）：保留 models/（已下载模型可复用，重下成本高）；
       include_models=True 时连 models/ 一起清。
-    数据库记录（bili_note.db）不动。返回各目录清理统计 + 保留项。
+    数据库记录（video_note.db）不动。返回各目录清理统计 + 保留项。
     """
     return json.dumps(cleanup_all_files(include_config=include_config, include_models=include_models), ensure_ascii=False)
 
@@ -958,7 +958,7 @@ def update_provider(
     """更新 LLM 供应商配置（base_url / name / enabled 等非敏感字段）。
 
     填 api_key 建议走对话外通道（更安全）：用户在独立终端执行
-    `bilinote-mcp providers set <provider_id> --api-key '...'`。
+    `videonote providers set <provider_id> --api-key '...'`。
     本工具也接受 api_key（给明确接受 key 经过对话的用户用）；改非敏感字段不受限。
     """
     data = {}
@@ -1220,7 +1220,7 @@ def export_transcript(
     只做确定性机械渲染（时间轴换算），不调用 LLM。返回
     {task_id, formats: {fmt: "file://绝对路径"}, errors: {}}，供 Agent 直接 Read。
     """
-    from bilinote_mcp.export import export_transcript as _export
+    from videonote_mcp.export import export_transcript as _export
 
     task_dir = NOTE_OUTPUT_DIR / str(task_id)
     result_json = task_dir / "result.json"
@@ -1245,7 +1245,7 @@ def export_transcript(
         )
 
     if formats is None:
-        from bilinote_mcp.config import get_app_config
+        from videonote_mcp.config import get_app_config
 
         formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
 
@@ -1313,7 +1313,7 @@ def diarize_media(
 
 
 def main() -> None:
-    """MCP server 入口。CLI（providers）由 bilinote_mcp.cli:main 分发，本函数只跑 MCP stdio。"""
+    """MCP server 入口。CLI（providers）由 videonote_mcp.cli:main 分发，本函数只跑 MCP stdio。"""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
     init_db()
     try:
@@ -1323,7 +1323,7 @@ def main() -> None:
         logger.info("已注册转写完成清理事件")
     except Exception as e:
         logger.warning(f"注册事件监听器失败: {e}")
-    logger.info(f"BiliNote-Mcp 启动 | 数据目录: {DATA_DIR}")
+    logger.info(f"VideoNote-Mcp 启动 | 数据目录: {DATA_DIR}")
     mcp.run(transport="stdio")
 
 
