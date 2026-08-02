@@ -2,6 +2,16 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-02 · 音频能力扩展）
+
+- **平台覆盖（generic 下载器）**：新增 `app/downloaders/generic_downloader.py` —— 用 yt-dlp 默认提取器（含 GenericIE 兜底）覆盖内置 5 平台之外的 **1800+ 站点**；`detect_platform` 未知 URL 返回 `"generic"`（不再 `"unsupported"`），`SUPPORT_PLATFORM_MAP` 加 `generic` 键，`validate_url` 对 generic 返回 `{supported:true, platform:"generic"}`。handoff 保留为 yt-dlp 也失败（登录墙/JS 渲染）时的兜底。清理 server.py 死代码 `_PLATFORM_HINTS`。
+- **多文件合并**：新增 `app/services/merge.py` + MCP 工具 `merge_audio(files, out_dir?)` —— FFmpeg concat 把多段录音/会议分段/多个本地视频合并为 16kHz mono wav（自动统一转码），再转写/总结。工具 27 → **29**（+merge_audio +diarize_media）。
+- **音频预处理**：新增 `app/transcriber/audio_preprocess.py`（`normalize_to_wav` 16kHz mono / `chunk_if_long` 超长分块 / `denoise` 可选 / `preprocess_pipeline`）；`pipeline.transcribe_audio` 插入预处理钩子（`enable_preprocess` 开启时归一+分块转写+时间偏移拼接，**默认关**、零硬依赖）；`transcriber_config_manager` 加 `enable_preprocess`/`diarization`/`diarization_speakers` 配置键。降噪（noisereduce）做成可选 extras，未装静默降级。
+- **说话人分离（可选重依赖）**：新增 `app/services/diarization.py`（`diarize_audio` pyannote 3.x + `assign_speakers` 时间对齐）；`TranscriptSegment` 加 `speaker` 字段（默认 None 向后兼容）；MCP 工具 `diarize_media(audio_file, num_speakers?, hf_token?)`；pyproject 加 `diarization = [pyannote.audio, torch, torchaudio]` 与 `preprocess = [noisereduce, scipy]` 两个可选 extras。未装 pyannote / 缺 HF_TOKEN → RuntimeError 带安装指引（复用 mlx 模式）。
+- **setup / CLI / health_check 同步**：`_wizard_transcriber` 加「音频预处理」「说话人分离」开关（pyannote 未装给黄色安装指引 + HF_TOKEN 询问）；`_setup_cli_fallback` 纯文本兜底同步；`bilinote-mcp transcriber preprocess on/off`、`diarization on/off` 子命令；`set_transcriber` 透传新参数；`health_check` 增 `audio_enhance` 块（预处理/分离就绪 + noisereduce/pyannote 是否已装）。
+- **测试**：新增 `tests/test_merge.py`（4 项）、`tests/test_audio_preprocess.py`（6 项）、`tests/test_diarization.py`（6 项）；`test_export.py` 平台断言更新为 generic。全量回归绿。
+- **文档**：docs/04（工具表 + 音频增强章节 + 故障表）、README 中英（工具表 + 进阶音频增强）、SKILL reference（tools.md 音频增强章节 + 配置要点 + troubleshooting pyannote/generic 项）、CHANGELOG 同步。
+
 ## 维护（2026-08-02）
 
 - **多格式输出层（解耦：MCP 机械格式 + SKILL 创意格式）**：

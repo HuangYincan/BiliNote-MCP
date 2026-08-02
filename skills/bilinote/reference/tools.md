@@ -87,6 +87,24 @@
 - **创意格式**（思维导图/闪卡/LaTeX/typst/用户自定义模板）不在这里——由 Agent 基于
   MD 底稿生成，见 [`output-formats.md`](output-formats.md)。
 
+## 音频增强（多文件合并 / 预处理 / 说话人分离）
+
+### `merge_audio(files, out_dir?)`
+- 把多个音频/视频文件合并为一个 16kHz mono wav（FFmpeg concat，自动统一转码）。
+- `files`: 至少 2 个本地路径；返回 `{ok, path: "file://绝对路径"}`。
+- 适用：多段录音 / 会议分段 / 多个本地视频拼成一段再转写。
+
+### 音频预处理（setup ② 或 `transcriber preprocess on`）
+- 转写前先把音频归一化为 16kHz mono wav；超长音频（>1800s）自动分块转写并时间偏移拼接。
+- **默认关**（`enable_preprocess`）。开启后 `generate_note` / `transcribe_media` 自动生效。
+- 零额外依赖（FFmpeg）；降噪（noisereduce）可选 extras，未装静默降级。
+
+### `diarize_media(audio_file, num_speakers?, hf_token?)`
+- 说话人分离（pyannote，**可选重依赖**）：归一化 → 分离 → 返回 `{ok, turns:[{start,end,speaker}]}`。
+- 需先装 `pyannote.audio` + torch（`uvx --with pyannote.audio --with torch`），配 `HF_TOKEN`，
+  并在 huggingface.co 同意 pyannote 模型授权；未装/缺 token 返回带安装指引的 error。
+- setup ② 勾选「说话人分离」可引导安装。
+
 ## 全自动 / 手动模式
 
 - **任务开始必须先问用户**「全自动」还是「手动」。
@@ -150,4 +168,7 @@
 | 评论/弹幕整合默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `include_comments`/`comments_limit` 即套用（默认关/20 条） |
 | 笔记默认（setup ③ 新增） | `default_style`（默认 detailed）/ `default_screenshot`（默认关）/ `agent_direct`（默认关，行为与之前一致）；全自动模式不传即套用 |
 | 导出格式默认（setup ③ 新增） | `default_export_formats`（srt/vtt/json，默认空）；任务成功后自动导出这些格式，`export_transcript` 不传 formats 时也套用它 |
+| 音频预处理（setup ②） | `transcriber preprocess on/off` 或 setup ② 勾选；16kHz 归一 + 超长分块（默认关，零依赖） |
+| 说话人分离（setup ②） | `transcriber diarization on/off` 或 setup ② 勾选；pyannote 可选重依赖 + HF_TOKEN + 模型授权 |
+| 其他平台（非内置 5 平台） | `validate_url` 返回 `platform:"generic"` → 自动走 yt-dlp 通用提取（覆盖 1800+ 站点） |
 | AGENT 直接生成 | `prepare_note_material(video_url, ...)` → 轮询 SUCCESS → 读素材包 → **AGENT 自己写笔记**（不调用配置 LLM） |

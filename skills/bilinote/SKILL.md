@@ -67,6 +67,13 @@ MD 底稿产出后，用户可能要其他格式。**分工**：机械格式（S
 **用户自定义模板**由 Agent 基于底稿生成。具体步骤见
 [`reference/output-formats.md`](reference/output-formats.md)（含 LaTeX 模板选择流程）。
 
+## 🎙 音频增强（可选）
+
+- **多文件合并**：`merge_audio(files, ...)` 把多段录音/会议分段拼成一段再转写。
+- **音频预处理**（setup ② 勾选）：16kHz 归一 + 超长分块，转写更稳。
+- **说话人分离**：`diarize_media(...)`（pyannote 可选，需 HF_TOKEN + 授权）。
+- 细节见 [`reference/tools.md`](reference/tools.md)「音频增强」章节。
+
 ## 参考
 
 需要工具参数/配置/故障排查时，用 **Read** 读取同目录 reference/ 下的文件：

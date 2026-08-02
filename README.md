@@ -277,6 +277,13 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 - **机械格式**（SRT/VTT/JSON）：`export_transcript(task_id, formats=["srt","vtt","json"])` —— 确定性渲染（时间轴换算），**不耗 LLM**，返回 `file://` 路径。任务成功后若 setup ③ 配置了「导出格式默认」，会自动导出这些格式。
 - **创意格式**（思维导图 / 闪卡 / LaTeX / typst / 用户自定义模板）：由 **Agent 基于 MD 底稿生成**。LaTeX 内置风格模板（`skills/bilinote/templates/latex/`：academic / lecture / meeting_minutes / minimal），用户选风格后 Agent 按模板生成 `.tex`（可选 `xelatex` 编译 PDF）；用户自带模板同样支持。详见 SKILL 的 `reference/output-formats.md`。
 
+### 进阶：音频增强
+
+- **平台覆盖**：内置 5 平台之外，`validate_url` 返回 `platform:"generic"` → 自动走 **yt-dlp 通用提取**（覆盖 1800+ 站点）；仍失败（登录墙/JS）才交给 Agent 接手。
+- **多文件合并**：`merge_audio(files, out_dir?)` —— FFmpeg concat 把多段录音/会议分段/多个本地视频合并为 16kHz mono wav，再转写。
+- **音频预处理**（setup ② 勾选 / `transcriber preprocess on`）：16kHz 归一 + 超长音频（>1800s）自动分块转写并拼接。**默认关**；零额外依赖。
+- **说话人分离**（setup ② 勾选 / `transcriber diarization on`）：`diarize_media(...)` 用 pyannote 标说话人。**可选重依赖**：`pyannote.audio` + torch + `HF_TOKEN` + 模型授权，未装返回安装指引。
+
 ## 工具参考
 
 | 工具 | 说明 |
@@ -294,11 +301,13 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
 | `list_transcriber_models` / `download_transcriber_model` | whisper 模型管理 |
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
-| `validate_url` | 判断视频链接属于哪个平台；不支持的平台返回 `{handoff:true}`（Agent 接手解析） |
+| `validate_url` | 判断视频链接属于哪个平台；内置 5 平台之外返回 `{supported:true, platform:"generic"}`（yt-dlp 通用提取） |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
 | `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
 | `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[清理与存储](#进阶清理与存储cleanup) |
 | `export_transcript` | 把任务转写导出为**确定性格式**（srt/vtt/json，不耗 LLM），返回文件路径；思维导图/闪卡/LaTeX 等创意格式由 Agent 基于底稿生成（见[输出格式](#进阶输出格式)） |
+| `merge_audio` | 把多个音频/视频文件合并为 16kHz mono wav（FFmpeg concat），再转写/总结（见[音频增强](#进阶音频增强)） |
+| `diarize_media` | 说话人分离（pyannote 可选重依赖，需 HF_TOKEN + 授权），返回说话人时间段 |
 
 ## 环境变量（可选）
 
