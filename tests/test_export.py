@@ -136,8 +136,10 @@ class PlatformHandoffTest(unittest.TestCase):
         self.assertEqual(pipeline.detect_platform("https://v.douyin.com/x"), "douyin")
         self.assertEqual(pipeline.detect_platform("/Users/x/video.mp4"), "local")
 
-    def test_unsupported_returns_string(self):
-        self.assertEqual(pipeline.detect_platform("https://unsupported.example.com/v"), "unsupported")
+    def test_unknown_returns_generic(self):
+        # 未知 URL → generic（yt-dlp 通用提取），不再返回 unsupported
+        self.assertEqual(pipeline.detect_platform("https://unsupported.example.com/v"), "generic")
+        self.assertEqual(pipeline.detect_platform("https://www.xiaohongshu.com/explore/123"), "generic")
 
     def test_empty_url_raises(self):
         with self.assertRaises(ValueError):

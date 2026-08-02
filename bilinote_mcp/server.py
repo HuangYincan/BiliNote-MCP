@@ -82,14 +82,6 @@ logger = get_logger(__name__)
 init_db()
 seed_default_providers()
 
-# 支持生成笔记的平台（与 app/services/constant.py 的 SUPPORT_PLATFORM_MAP 对应）
-_PLATFORM_HINTS = [
-    ("bilibili", ("bilibili.com", "b23.tv")),
-    ("youtube", ("youtube.com", "youtu.be")),
-    ("douyin", ("douyin.com",)),
-    ("tiktok", ("tiktok.com",)),
-    ("kuaishou", ("kuaishou.com", "gifshow.com")),
-]
 WHISPER_MODEL_SIZES = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 
 mcp = FastMCP("bilinote")
@@ -348,8 +340,8 @@ def _coerce_transcript(transcript) -> dict:
 def _detect_platform(url: str) -> str:
     """从 URL / 本地路径识别平台（与 pipeline.detect_platform 一致）。
 
-    未知 URL 返回 `"unsupported"` 而非 raise —— 调用方据此时将任务交给 Agent 接手
-    （返回 handoff 结构，见 pipeline.handoff_result）。空 url 仍 raise ValueError。
+    未知 URL 返回 `"generic"`（走 yt-dlp 通用提取）；空 url 仍 raise ValueError。
+    yt-dlp 也失败时，任务层用 handoff 提示让 Agent 接手。
     """
     return pipeline.detect_platform(url)
 
@@ -415,7 +407,7 @@ def generate_note(
     if platform is None:
         platform = _detect_platform(video_url)
     if platform == "unsupported":
-        # 平台不在内置范围 → 返回 handoff 结构，交给 Agent 接手解析（WebFetch/浏览器/yt-dlp）
+        # 仅显式传 platform="unsupported" 时触发 handoff（detect_platform 现在返回 "generic"）
         return json.dumps(pipeline.handoff_result(video_url), ensure_ascii=False)
     if platform == "local" and not Path(video_url).expanduser().exists():
         raise ValueError(f"本地文件不存在: {video_url}")
@@ -525,7 +517,7 @@ def prepare_note_material(
     if platform is None:
         platform = _detect_platform(video_url)
     if platform == "unsupported":
-        # 平台不在内置范围 → 返回 handoff 结构，交给 Agent 接手解析
+        # 仅显式传 platform="unsupported" 时触发 handoff（detect_platform 现在返回 "generic"）
         return json.dumps(pipeline.handoff_result(video_url), ensure_ascii=False)
     if platform == "local" and not Path(video_url).expanduser().exists():
         raise ValueError(f"本地文件不存在: {video_url}")
@@ -1126,9 +1118,9 @@ def health_check() -> str:
 def validate_url(url: str) -> str:
     """判断视频链接属于哪个平台，以及是否受支持。
 
-    支持：bilibili（含 b23.tv）、youtube（含 youtu.be）、douyin、tiktok、kuaishou、本地文件路径。
-    不支持的平台返回 {supported: False, handoff: True, ...} —— Agent 读到 handoff:True
-    就该自行接手解析（WebFetch/浏览器/yt-dlp 通用模式）。
+    内置平台：bilibili（含 b23.tv）、youtube（含 youtu.be）、douyin、tiktok、kuaishou、本地文件路径。
+    其他 URL 返回 platform: "generic"（会尝试 yt-dlp 通用提取，覆盖 1800+ 站点）。
+    仅显式传 platform="unsupported" 时返回 {supported: False, handoff: True, ...}。
     """
     try:
         platform = _detect_platform(url)
@@ -1137,8 +1129,13 @@ def validate_url(url: str) -> str:
                 {"supported": False, **pipeline.handoff_result(url)},
                 ensure_ascii=False,
             )
+        reason = (
+            "识别为 generic：将尝试 yt-dlp 通用提取（可能需登录/代理）"
+            if platform == "generic"
+            else f"识别为 {platform}"
+        )
         return json.dumps(
-            {"supported": True, "platform": platform, "reason": f"识别为 {platform}"},
+            {"supported": True, "platform": platform, "reason": reason},
             ensure_ascii=False,
         )
     except ValueError as e:
