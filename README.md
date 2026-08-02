@@ -1,6 +1,6 @@
 ---
 
-<p align="center"><!-- 首图：logo / 示例笔记截图（预留） --></p>
+<p align="center"><img src="assets/cover.png" alt="VideoNote-Mcp" width="800"/></p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
 <p align="center"><em>视频链接 → 多格式笔记</em><br/>一条链接 → 一篇笔记 · 端到端或解耦，任意组合</p>
 <p align="center"><strong>🇨🇳 中文</strong> | <a href="./README_EN.md">🇬🇧 English</a></p>
@@ -202,7 +202,7 @@ flowchart TB
     GEN --> T1C["Assets/ 笔记内截图"]
     GEN --> T1D["frames/ 关键帧原图"]
     GEN --> T1E["srt / vtt / json 字幕导出"]
-    DB -. 索引 →. T1
+    DB -. 索引 .-> T1
 ```
 
 | 工具 | 说明 | 类型 |

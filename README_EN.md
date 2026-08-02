@@ -1,6 +1,6 @@
 ---
 
-<p align="center"><!-- Cover: logo / sample-note screenshot (placeholder) --></p>
+<p align="center"><img src="assets/cover.png" alt="VideoNote-Mcp" width="800"/></p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
 <p align="center"><em>Video link → multi-format notes</em><br/>One link → one note · end-to-end or decoupled, any combination</p>
 <p align="center"><a href="./README.md">🇨🇳 中文</a> | <strong>🇬🇧 English</strong></p>
@@ -200,7 +200,7 @@ flowchart TB
     GEN --> T1C["Assets/ screenshots in the note"]
     GEN --> T1D["frames/ keyframe originals"]
     GEN --> T1E["srt / vtt / json subtitle exports"]
-    DB -. index →. T1
+    DB -. index .-> T1
 ```
 
 | Tool | Description | Type |
