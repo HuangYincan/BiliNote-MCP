@@ -270,6 +270,13 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 
 安全：只删 manifest 记录 / 明确前缀模式的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计。
 
+### 进阶：输出格式（多格式导出）
+
+笔记/转写产出后可按需导出为多种格式：
+
+- **机械格式**（SRT/VTT/JSON）：`export_transcript(task_id, formats=["srt","vtt","json"])` —— 确定性渲染（时间轴换算），**不耗 LLM**，返回 `file://` 路径。任务成功后若 setup ③ 配置了「导出格式默认」，会自动导出这些格式。
+- **创意格式**（思维导图 / 闪卡 / LaTeX / typst / 用户自定义模板）：由 **Agent 基于 MD 底稿生成**。LaTeX 内置风格模板（`skills/bilinote/templates/latex/`：academic / lecture / meeting_minutes / minimal），用户选风格后 Agent 按模板生成 `.tex`（可选 `xelatex` 编译 PDF）；用户自带模板同样支持。详见 SKILL 的 `reference/output-formats.md`。
+
 ## 工具参考
 
 | 工具 | 说明 |
@@ -287,10 +294,11 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 | `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
 | `list_transcriber_models` / `download_transcriber_model` | whisper 模型管理 |
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
-| `validate_url` | 判断视频链接属于哪个平台 |
+| `validate_url` | 判断视频链接属于哪个平台；不支持的平台返回 `{handoff:true}`（Agent 接手解析） |
 | `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
 | `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
 | `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[清理与存储](#进阶清理与存储cleanup) |
+| `export_transcript` | 把任务转写导出为**确定性格式**（srt/vtt/json，不耗 LLM），返回文件路径；思维导图/闪卡/LaTeX 等创意格式由 Agent 基于底稿生成（见[输出格式](#进阶输出格式)） |
 
 ## 环境变量（可选）
 

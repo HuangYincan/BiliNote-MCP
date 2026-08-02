@@ -2,6 +2,16 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-02）
+
+- **多格式输出层（解耦：MCP 机械格式 + SKILL 创意格式）**：
+  - **新增 `bilinote_mcp/export/` 包**（自有代码，仅确定性机械格式）：`srt.py` / `vtt.py` / `json.py` 纯渲染（时间轴换算，毫秒进位、`-->` 转义、空段兜底），`exporter.py` 落盘 `note_results/{task_id}/` 并记入 task manifest（可被 `cleanup_note` 清理）。
+  - **新 MCP 工具 `export_transcript(task_id, formats?, out_dir?)`**（工具 26 → **27**）：读任务转写 → 导出 srt/vtt/json，**不耗 LLM**，同步返回 `{task_id, formats:{fmt:"file://路径"}}`。任务成功后若 setup ③ 配置了「导出格式默认」（`default_export_formats`），自动导出这些格式。
+  - **新 CLI 子命令 `bilinote-mcp export`**：`export list` / `export <task_id> --format srt,vtt,json [--out-dir]`；setup ③ 新增「导出格式默认」多选（checkbox，srt/vtt/json，清空 = 不自动导出）。
+  - **创意格式走 SKILL + Agent**：思维导图（Mermaid）/闪卡/LaTeX/typst/**用户自定义模板**由 Agent 基于 MD 底稿生成，不新增 MCP 工具、不耗配置 provider（与 `agent_direct` 同哲学）。**新增 `skills/bilinote/templates/latex/`** 4 个 LaTeX 风格模板资产（academic / lecture / meeting_minutes / minimal，frontmatter 元数据 + 占位符），用户选风格后 Agent 按模板生成 `.tex`（可选 `xelatex` 编译 PDF）；**新增 `skills/bilinote/reference/output-formats.md`** 具体步骤；SKILL.md 加「🖨 输出格式」地图小节。
+  - **平台接手（Agent 解析超范围链接）**：`pipeline.detect_platform` 未知 URL 返回 `"unsupported"`（不再 raise），新增 `pipeline.handoff_result()`；`validate_url` / `generate_note` / `prepare_note_material` 对不支持的平台返回结构化 `{supported:false, ok:false, handoff:true, hint}` —— Agent 读到 `handoff:true` 即用 WebFetch/浏览器/yt-dlp 通用模式接手解析，再以本地文件调用 `platform="local"`。SKILL 强制规则 6 / reference/troubleshooting 同步。
+  - **文档**：docs/04（工具表 + 输出格式章节）、README（中英工具表 + 进阶输出格式章节）、CHANGELOG 同步；新增 `tests/test_export.py`（18 项：srt/vtt/json 渲染、exporter 落盘/manifest、detect_platform/handoff）。
+
 ## 维护（2026-08-01）
 
 - **流水线模块解耦**：新增独立步骤层 `app/services/pipeline.py`（`fetch_subtitles` / `transcribe_audio` / `extract_frames` / `fetch_comments_danmaku` / `summarize_material` 五个无状态步骤函数），`NoteGenerator.generate()` 内部改为复用它们（`_get_transcript` / `_transcribe_audio` / `_fetch_comments_danmaku` / `_summarize_text` 改薄委托，行为不变）；新增 4 个独立 MCP 工具 —— `fetch_subtitles`（同步，只取字幕）、`transcribe_media`（异步，只做 ASR）、`extract_frames`（异步，本地 mp4 → 关键帧 file://）、`summarize_note`（异步，吃素材包做 LLM 总结）—— 只抓弹幕评论 / 只做语音识别 / 已有字幕+画面理解 / 已有 mp4 画面理解 等任意组合都可用（工具 22 → **26**）。新增 `tests/test_pipeline_steps.py`（14 项：字幕/转写/抽帧落盘/评论聚合/summarize 素材包，全 mock）。SKILL reference / README 中英 / CHANGELOG 同步。
