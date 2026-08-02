@@ -255,13 +255,15 @@ def summarize_material(
     formats: Optional[List[str]] = None,
     screenshot: bool = False,
     link: bool = False,
+    tags: Optional[List] = None,
     checkpoint_key: Optional[str] = None,
     cancel_event=None,
 ) -> str:
     """只做 LLM 总结：给定素材包（转写/帧/评论）+ GPT 实例 → 返回 Markdown。
 
     不写缓存、不写库、不更新状态 —— 那些是编排层（generate）的职责。
-    素材包缺字段时安全兜底（title 空、无帧、无评论都可用）。
+    素材包缺字段时安全兜底（title 空、无帧、无评论都可用）。tags 透传给 GPTSource
+    （generate() 重构时传 audio_meta.raw_info.get("tags", []) 保持行为一致）。
     """
     transcript = material.get("transcript") or {}
     segments: List = transcript.get("segments") or []
@@ -272,7 +274,7 @@ def summarize_material(
     source = GPTSource(
         title=material.get("title") or "",
         segment=seg_objs,
-        tags=[],
+        tags=tags or [],
         screenshot=screenshot,
         video_img_urls=_frames_to_data_uris(material.get("frames")),
         comments_danmaku=material.get("comments_danmaku"),
