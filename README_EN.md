@@ -1,6 +1,11 @@
 ---
 
-<p align="center"><img src="assets/cover.png" alt="VideoNote-Mcp" width="800"/></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/cover-dark.png"/>
+    <img src="assets/cover-light.png" alt="VideoNote-Mcp" width="800"/>
+  </picture>
+</p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
 <p align="center"><em>Video link → multi-format notes</em><br/>One link → one note · end-to-end or decoupled, any combination</p>
 <p align="center"><a href="./README.md">🇨🇳 中文</a> | <strong>🇬🇧 English</strong></p>

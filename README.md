@@ -1,6 +1,11 @@
 ---
 
-<p align="center"><img src="assets/cover.png" alt="VideoNote-Mcp" width="800"/></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/cover-dark.png"/>
+    <img src="assets/cover-light.png" alt="VideoNote-Mcp" width="800"/>
+  </picture>
+</p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
 <p align="center"><em>视频链接 → 多格式笔记</em><br/>一条链接 → 一篇笔记 · 端到端或解耦，任意组合</p>
 <p align="center"><strong>🇨🇳 中文</strong> | <a href="./README_EN.md">🇬🇧 English</a></p>
