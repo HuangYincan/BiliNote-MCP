@@ -2,6 +2,14 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-02 · FunASR 中文引擎）
+
+- **FunASR Paraformer-zh 中文转写引擎**（可选重依赖）：新增 `app/transcriber/funasr_transcriber.py` —— `AutoModel(model="paraformer-zh", vad_model="fsmn-vad", punc_model="ct-punc")` 一个 pipeline 端到端输出**带标点**的中文文本 + VAD 段落时间轴（`sentence_info` 毫秒→秒映射为 `TranscriptSegment`）。中文质量优于 faster-whisper（Paraformer-zh WER ~8.4%）。**惰性加载**：模块顶层不 import funasr，未装时抛 RuntimeError 安装指引（复用 mlx/pyannote 可选依赖模式）。
+- **注册与配置**：`transcriber_provider` 加 `FUNASR` 枚举 + 单例 + dispatch；`is_model_ready` 对 funasr 未装返回 `ready:false` + 安装指引（模型首次转写自动下载，无需预检模型文件）；pyproject 加 `funasr = ["funasr", "torch"]` extras。
+- **CLI/setup 同步**：`bilinote-mcp transcriber set funasr`、`_TRANSCRIBER_ENGINES` 加 funasr、InquirerPy 向导 + 纯文本兜底引擎列表 + 未装黄色警告 + 安装指引。
+- **测试**：新增 `tests/test_funasr.py`（4 项：未装安装指引 / sentence_info 毫秒→秒映射 / 无句信息单段 / 空结果）。全量回归绿（73 单测 + test_material_mode）。
+- **文档**：docs/04（转写引擎章节 + funasr 说明）、README 中英（命令 + 引擎列表）、SKILL reference/tools.md（set_transcriber("funasr") + 配置要点 + validate_url generic 更新）、CHANGELOG 同步。
+
 ## 维护（2026-08-02 · 音频能力扩展）
 
 - **平台覆盖（generic 下载器）**：新增 `app/downloaders/generic_downloader.py` —— 用 yt-dlp 默认提取器（含 GenericIE 兜底）覆盖内置 5 平台之外的 **1800+ 站点**；`detect_platform` 未知 URL 返回 `"generic"`（不再 `"unsupported"`），`SUPPORT_PLATFORM_MAP` 加 `generic` 键，`validate_url` 对 generic 返回 `{supported:true, platform:"generic"}`。handoff 保留为 yt-dlp 也失败（登录墙/JS 渲染）时的兜底。清理 server.py 死代码 `_PLATFORM_HINTS`。

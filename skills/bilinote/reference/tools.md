@@ -144,11 +144,12 @@
 - `get_transcriber_config()` —— 当前引擎/尺寸/就绪（`ready=false` 时先下载或切云端）。
 - `set_transcriber(transcriber_type, whisper_model_size?)` —— 切引擎（fast-whisper/groq/bcut/kuaishou/mlx-whisper）。
 - `list_transcriber_models()` / `download_transcriber_model(model_size, transcriber_type?)` —— 模型管理（下载为后台任务）。
+- `set_transcriber("funasr")` —— 中文最优引擎（Paraformer-zh + VAD + 标点）。**可选重依赖**：需 `funasr` + torch（`uvx --with funasr --with torch`）；模型首次转写时自动下载。未装时返回安装指引。
 
 ## 其它
 
 - `health_check()` —— ffmpeg/db/whisper 就绪状态。
-- `validate_url(url)` —— 识别平台（bilibili/youtube/douyin/tiktok/kuaishou/local）。不支持的平台返回 `{supported: false, handoff: true, hint}` —— 读到 `handoff:true` 即 Agent 接手解析（见 SKILL 强制规则 6）。
+- `validate_url(url)` —— 识别平台（bilibili/youtube/douyin/tiktok/kuaishou/local）。内置 5 平台之外返回 `{supported: true, platform: "generic"}`（yt-dlp 通用提取，覆盖 1800+ 站点）；仅当 yt-dlp 也失败时 Agent 接手解析。
 - `set_downloader_cookie(platform, cookie)` —— 设置平台 Cookie（如 B 站 `SESSDATA=...`）。
 - `fetch_comments(video_url, limit=20)` —— B 站热门评论（供生成前预览）。
 - `fetch_danmaku(video_url)` —— B 站弹幕汇总（高密度时段 + 高频词）。
@@ -170,5 +171,6 @@
 | 导出格式默认（setup ③ 新增） | `default_export_formats`（srt/vtt/json，默认空）；任务成功后自动导出这些格式，`export_transcript` 不传 formats 时也套用它 |
 | 音频预处理（setup ②） | `transcriber preprocess on/off` 或 setup ② 勾选；16kHz 归一 + 超长分块（默认关，零依赖） |
 | 说话人分离（setup ②） | `transcriber diarization on/off` 或 setup ② 勾选；pyannote 可选重依赖 + HF_TOKEN + 模型授权 |
+| 切中文转写（funasr） | `set_transcriber("funasr")`；需 `uvx --with funasr --with torch`（重依赖可选），模型自动下载 |
 | 其他平台（非内置 5 平台） | `validate_url` 返回 `platform:"generic"` → 自动走 yt-dlp 通用提取（覆盖 1800+ 站点） |
 | AGENT 直接生成 | `prepare_note_material(video_url, ...)` → 轮询 SUCCESS → 读素材包 → **AGENT 自己写笔记**（不调用配置 LLM） |

@@ -154,6 +154,7 @@ bilinote-mcp providers test deepseek --default deepseek-chat    # 检测并设�
 bilinote-mcp transcriber list                                  # 查看当前引擎与就绪状态
 bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whisper
 bilinote-mcp transcriber set groq                               # 切云端
+bilinote-mcp transcriber set funasr                             # 切中文最优（VAD+标点，需 uvx --with funasr）
 bilinote-mcp transcriber download small                          # 下载 fast-whisper 模型
 bilinote-mcp transcriber download small --engine mlx-whisper     # 下载 mlx-whisper（macOS）
 
@@ -161,7 +162,7 @@ bilinote-mcp transcriber download small --engine mlx-whisper     # 下载 mlx-wh
 bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA（AI 字幕需登录态）
 ```
 
-**转写引擎**：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（**仅 macOS Apple Silicon**，GPU 加速）。
+**转写引擎**：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（**仅 macOS Apple Silicon**，GPU 加速）/ `funasr`（**中文最优**：Paraformer-zh + VAD + 自动标点，可选重依赖，模型自动下载）。
 
 **本地 whisper 尺寸**：`tiny` / `base` / `small` / `medium` / `large-v3` / **`large-v3-turbo`**（turbo 更快、精度略低于 large-v3）。
 

@@ -154,6 +154,7 @@ bilinote-mcp providers test deepseek --default deepseek-chat    # test and set a
 bilinote-mcp transcriber list                                  # current engine + readiness
 bilinote-mcp transcriber set fast-whisper --size small          # switch to local whisper
 bilinote-mcp transcriber set groq                               # switch to cloud
+bilinote-mcp transcriber set funasr                             # switch to best-Chinese (VAD+punctuation; needs uvx --with funasr)
 bilinote-mcp transcriber download small                          # download fast-whisper model
 bilinote-mcp transcriber download small --engine mlx-whisper     # download mlx-whisper (macOS)
 
@@ -161,7 +162,7 @@ bilinote-mcp transcriber download small --engine mlx-whisper     # download mlx-
 bilinote-mcp login bilibili     # QR login, auto-fetch & save SESSDATA (AI subtitles need login)
 ```
 
-**Transcription engines**: `fast-whisper` (local) / `groq` / `bcut` / `kuaishou` (cloud) / `mlx-whisper` (**macOS Apple Silicon only**, GPU).
+**Transcription engines**: `fast-whisper` (local) / `groq` / `bcut` / `kuaishou` (cloud) / `mlx-whisper` (**macOS Apple Silicon only**, GPU) / `funasr` (**best for Chinese**: Paraformer-zh + VAD + auto punctuation, optional heavy dep, auto-downloads model).
 
 **Local whisper sizes**: `tiny` / `base` / `small` / `medium` / `large-v3` / **`large-v3-turbo`** (turbo is faster, slightly less accurate).
 
