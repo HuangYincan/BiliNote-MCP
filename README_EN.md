@@ -2,10 +2,12 @@
 
 <p align="center"><!-- Cover: logo / sample-note screenshot (placeholder) --></p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
-<p align="center"><em>Video link → AI structured Markdown notes</em><br/>One link → one note · end-to-end or decoupled, any combination</p>
+<p align="center"><em>Video link → multi-format notes</em><br/>One link → one note · end-to-end or decoupled, any combination</p>
 <p align="center"><a href="./README.md">🇨🇳 中文</a> | <strong>🇬🇧 English</strong></p>
 <p align="center">
-  <a href="#pipeline-map">🗺️ Pipeline Map</a> •
+  <a href="#-quick-start">⚡ Quick Start</a> •
+  <a href="#-docs">📚 Docs</a> •
+  <a href="#-pipeline-map">🗺️ Pipeline Map</a> •
   <a href="#0--end-to-end-pipeline">0 End-to-end</a> •
   <a href="#1--download-and-platform-parsing">1 Download</a> •
   <a href="#2--speech-to-text-asr">2 Transcribe</a> •
@@ -15,16 +17,16 @@
   <a href="#6--multi-format-export">6 Export</a> •
   <a href="#7--audio-enhancement">7 Audio</a> •
   <a href="#8--task-management-and-cleanup">8 Tasks</a> •
-  <a href="#docs">📚 Docs</a> •
-  <a href="#quick-start">⚡ Quick Start</a> •
-  <a href="#best-practices">🏆 Best Practices</a> •
-  <a href="#how-to-contribute">🤝 Contribute</a> •
-  <a href="#acknowledgements">🙏 Thanks</a>
+  <a href="#-best-practices">🏆 Best Practices</a> •
+  <a href="#-how-to-contribute">🤝 Contribute</a> •
+  <a href="#-acknowledgements">🙏 Thanks</a>
 </p>
 
 ---
 
-VideoNote-Mcp packages the whole "video link → AI structured Markdown note" pipeline into an **MCP Server + Claude Code Skill**: hand an agent a link and it automatically runs download → transcription → frame understanding → danmaku/comments → AI summary, returning a portable note with screenshots that you can move around. Repository: [HuangYincan/VideoNote-MCP](https://github.com/HuangYincan/VideoNote-MCP).
+VideoNote-Mcp packages the whole "video link → multi-format notes" pipeline into an **MCP Server + Claude Code Skill**: hand an agent a link and it automatically runs download → transcription → frame understanding → danmaku/comments → AI summary, returning a portable note with screenshots that you can move around.
+
+Repository: [HuangYincan/VideoNote-MCP](https://github.com/HuangYincan/VideoNote-MCP).
 
 This project **works end-to-end (one link → one note)** and is **also decoupled**: every pipeline stage (download / transcribe / frames / comments / summarize / export / enhance / cleanup) is an independent MCP tool, so you can use just one step or assemble your own material and summarize it in any combination. No backend required.
 
@@ -37,7 +39,51 @@ This project **works end-to-end (one link → one note)** and is **also decouple
   <a href="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP"><img src="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP/badges/score.svg" alt="VideoNote-MCP MCP server"></a>
 </p>
 
+---
+
+## ⚡ Quick Start
+
+```bash
+# 1) One command installs both Skill + MCP (plugin marketplace, uvx auto-updates)
+claude plugin marketplace add HuangYincan/VideoNote-MCP
+claude plugin install videonote@videonote
+
+# 2) Configure LLM key + transcription engine (keys never enter the conversation)
+videonote setup
+
+# 3) Restart your session, tell the agent "make notes for this video" + link
+```
+
+> All four install methods, configuration details, updating and security are in [docs/04-使用手册.md](docs/04-使用手册.md).
+
+## 📚 Docs
+
+Full installation / configuration / usage / env vars / updating / security docs now live in `docs/` (this README keeps just the overview):
+
+- [📇 Document Index](docs/00-文档索引.md)
+- [🏗️ Architecture](docs/02-架构设计.md)
+- [📖 User Manual](docs/04-使用手册.md) — install (4 methods) · config (setup wizard + CLI) · env vars · updating · security
+- [📜 Changelog](docs/CHANGELOG.md)
+
+---
+
 ## 🗺️ Pipeline Map
+
+```mermaid
+flowchart LR
+    A["Video link"] --> B["Download audio/video<br/>+ platform subtitles"]
+    B --> C["Transcribe audio<br/>or use platform subtitles"]
+    B -. optional .-> D["Frame understanding<br/>keyframes → grid image"]
+    B -. optional .-> E["Danmaku + comments"]
+    C --> F["Material package<br/>transcript · frames · comments"]
+    D -.-> F
+    E -.-> F
+    F --> G["AI summary → Markdown draft<br/>body + screenshots + \"Audience viewpoints\""]
+    G --> O1["Portable note<br/>note.md + Assets/"]
+    G --> O2["Subtitle export<br/>SRT · VTT · JSON"]
+    G -. Agent-generated .-> O3["Creative formats<br/>mindmap · flashcards · LaTeX · typst"]
+    G -. optional .-> O4["Refine from full transcript<br/>keep original for comparison"]
+```
 
 | Stage | Responsibility | Typical tools |
 |------|------|----------|
@@ -139,6 +185,24 @@ Mechanical formats use `export_transcript` (srt / vtt / json) — deterministic 
 
 One folder per task `note_results/{task_id}/`: `raw/` (downloaded media) + `gen/` (transcript/note/frames/exports) + control files; a **global task index** lives in the SQLite `video_tasks` table (with semantic titles). `list_tasks` enumerates all tasks (identify by semantic title), `get_task_files` inspects a task before cleanup, `cleanup_note` / `cleanup_all` do per-task / global cleanup (config & models kept by default), and `health_check` verifies FFmpeg / database / whisper readiness.
 
+```mermaid
+flowchart TB
+    DATA["data/ root"] --> R["note_results/ tasks"]
+    DATA --> DB[("video_note.db<br/>SQLite global task index")]
+    R --> T1["Task A<br/>note_results/{task_id}/"]
+    R --> T2["Task B<br/>…"]
+    R --> T3["Task C<br/>…"]
+    T1 --> RAW["raw/ original material<br/>audio/video · cover"]
+    T1 --> GEN["gen/ generated material"]
+    T1 --> CTRL["status.json · result.json · manifest.json"]
+    GEN --> T1A["transcript.json full transcript"]
+    GEN --> T1B["note.md finished note"]
+    GEN --> T1C["Assets/ screenshots in the note"]
+    GEN --> T1D["frames/ keyframe originals"]
+    GEN --> T1E["srt / vtt / json subtitle exports"]
+    DB -. index →. T1
+```
+
 | Tool | Description | Type |
 |------|------|------|
 | `list_tasks` | List all tasks (global index, with semantic titles) | MCP tool |
@@ -147,30 +211,6 @@ One folder per task `note_results/{task_id}/`: `raw/` (downloaded media) + `gen/
 | `health_check` | FFmpeg / database / whisper readiness | MCP tool |
 
 ---
-
-## 📚 Docs
-
-Full installation / configuration / usage / env vars / updating / security docs now live in `docs/` (this README keeps just the overview):
-
-- [📇 Document Index](docs/00-文档索引.md)
-- [🏗️ Architecture](docs/02-架构设计.md)
-- [📖 User Manual](docs/04-使用手册.md) — install (4 methods) · config (setup wizard + CLI) · env vars · updating · security
-- [📜 Changelog](docs/CHANGELOG.md)
-
-## ⚡ Quick Start
-
-```bash
-# 1) One command installs both Skill + MCP (plugin marketplace, uvx auto-updates)
-claude plugin marketplace add HuangYincan/VideoNote-MCP
-claude plugin install videonote@videonote
-
-# 2) Configure LLM key + transcription engine (keys never enter the conversation)
-videonote setup
-
-# 3) Restart your session, tell the agent "make notes for this video" + link
-```
-
-> All four install methods, configuration details, updating and security are in [docs/04-使用手册.md](docs/04-使用手册.md).
 
 ## 🏆 Best Practices
 

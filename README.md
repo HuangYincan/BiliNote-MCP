@@ -2,10 +2,12 @@
 
 <p align="center"><!-- 首图：logo / 示例笔记截图（预留） --></p>
 <h1 align="center">🎬 VideoNote-Mcp</h1>
-<p align="center"><em>视频链接 → AI 结构化 Markdown 笔记</em><br/>一条链接 → 一篇笔记 · 端到端或解耦，任意组合</p>
+<p align="center"><em>视频链接 → 多格式笔记</em><br/>一条链接 → 一篇笔记 · 端到端或解耦，任意组合</p>
 <p align="center"><strong>🇨🇳 中文</strong> | <a href="./README_EN.md">🇬🇧 English</a></p>
 <p align="center">
-  <a href="#流水线地图">🗺️ 流水线地图</a> •
+  <a href="#-快速开始">⚡ 快速开始</a> •
+  <a href="#-文档">📚 文档</a> •
+  <a href="#-流水线地图">🗺️ 流水线地图</a> •
   <a href="#0--端到端全流程">0 端到端</a> •
   <a href="#1--下载与平台解析">1 下载</a> •
   <a href="#2--语音转写asr">2 转写</a> •
@@ -15,16 +17,16 @@
   <a href="#6--多格式导出">6 导出</a> •
   <a href="#7--音频增强">7 音频</a> •
   <a href="#8--任务管理与清理">8 任务</a> •
-  <a href="#文档">📚 文档</a> •
-  <a href="#快速开始">⚡ 快速开始</a> •
-  <a href="#最佳实践">🏆 最佳实践</a> •
-  <a href="#如何贡献">🤝 如何贡献</a> •
-  <a href="#致谢">🙏 致谢</a>
+  <a href="#-最佳实践">🏆 最佳实践</a> •
+  <a href="#-如何贡献">🤝 如何贡献</a> •
+  <a href="#-致谢">🙏 致谢</a>
 </p>
 
 ---
 
-VideoNote-Mcp 把「视频链接 → AI 结构化 Markdown 笔记」整条流水线打包成 **MCP Server + Claude Code Skill**：给 agent 一个链接，它自动完成 下载 → 语音转写 → 画面理解 → 弹幕/评论 → AI 总结，交回一篇带截图、可整体搬迁的便携笔记。仓库：[HuangYincan/VideoNote-MCP](https://github.com/HuangYincan/VideoNote-MCP)。
+VideoNote-Mcp 把「视频链接 → 多格式笔记」整条流水线打包成 **MCP Server + Claude Code Skill**：给 agent 一个链接，它自动完成 下载 → 语音转写 → 画面理解 → 弹幕/评论 → AI 总结，交回一篇带截图、可整体搬迁的便携笔记。
+
+仓库：[HuangYincan/VideoNote-MCP](https://github.com/HuangYincan/VideoNote-MCP)。
 
 本项目**既可端到端使用（一条链接 → 一篇笔记）**，**也可解耦**：流水线每一阶段（下载 / 转写 / 抽帧 / 评论 / 总结 / 导出 / 增强 / 清理）都是独立 MCP 工具，想只用某一步、或自己拼素材再总结，都能任意组合。无需启动任何后端服务。
 
@@ -37,7 +39,53 @@ VideoNote-Mcp 把「视频链接 → AI 结构化 Markdown 笔记」整条流水
   <a href="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP"><img src="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP/badges/score.svg" alt="VideoNote-MCP MCP server"></a>
 </p>
 
+---
+
+## ⚡ 快速开始
+
+```bash
+# 1) 一条命令装好 Skill + MCP（插件 marketplace，uvx 自动更新）
+claude plugin marketplace add HuangYincan/VideoNote-MCP
+claude plugin install videonote@videonote
+
+# 2) 配置 LLM key + 语音转写引擎（key 不进对话）
+videonote setup
+
+# 3) 重启会话，对 agent 说「帮我给这个视频做笔记」+ 链接
+```
+
+> [!TIP] 
+> 四种安装方式、配置细节、更新与安全见 [docs/04-使用手册.md](docs/04-使用手册.md)。
+> 
+
+## 📚 文档
+
+安装 / 配置 / 使用 / 环境变量 / 更新 / 安全等完整说明已归档到 `docs/`（README 只保留概览）：
+
+- [📇 文档索引](docs/00-文档索引.md)
+- [🏗️ 架构设计](docs/02-架构设计.md)
+- [📖 使用手册](docs/04-使用手册.md) —— 安装（4 种方式）· 配置（setup 向导 + CLI）· 环境变量 · 更新 · 安全
+- [📜 更新日志](docs/CHANGELOG.md)
+
+---
+
 ## 🗺️ 流水线地图
+
+```mermaid
+flowchart LR
+    A["视频链接"] --> B["下载音视频<br/>+ 平台字幕"]
+    B --> C["语音转写<br/>或直接用平台字幕"]
+    B -. 可选 .-> D["逐帧画面理解<br/>关键帧 → 网格图"]
+    B -. 可选 .-> E["弹幕 + 评论区"]
+    C --> F["素材包<br/>转写 · 帧 · 评论"]
+    D -.-> F
+    E -.-> F
+    F --> G["AI 总结 → Markdown 底稿<br/>正文 + 截图 + 「观众观点」"]
+    G --> O1["便携笔记<br/>note.md + Assets/"]
+    G --> O2["字幕导出<br/>SRT · VTT · JSON"]
+    G -. Agent 生成 .-> O3["创意格式<br/>思维导图 · 闪卡 · LaTeX · typst"]
+    G -. 可选 .-> O4["基于完整字幕精修<br/>保留原版对比"]
+```
 
 | 阶段 | 职责 | 典型工具 |
 |------|------|----------|
@@ -139,6 +187,24 @@ VideoNote-Mcp 把「视频链接 → AI 结构化 Markdown 笔记」整条流水
 
 每任务一个文件夹 `note_results/{task_id}/`：`raw/`（下载媒体）+ `gen/`（转写/笔记/帧/导出）+ 控制文件；**全局任务索引**在 SQLite `video_tasks` 表（含语义标题）。`list_tasks` 枚举全部任务（按语义标题识别）、`get_task_files` 先查后清、`cleanup_note` / `cleanup_all` 按任务 / 全局清理（默认保留配置与模型）、`health_check` 检查 FFmpeg / 数据库 / whisper 就绪。
 
+```mermaid
+flowchart TB
+    DATA["data/ 数据根"] --> R["note_results/ 任务目录"]
+    DATA --> DB[("video_note.db<br/>SQLite 全局任务索引")]
+    R --> T1["任务 A<br/>note_results/{task_id}/"]
+    R --> T2["任务 B<br/>…"]
+    R --> T3["任务 C<br/>…"]
+    T1 --> RAW["raw/ 原始材料<br/>音视频 · 封面"]
+    T1 --> GEN["gen/ 生成材料"]
+    T1 --> CTRL["status.json · result.json · manifest.json"]
+    GEN --> T1A["transcript.json 转写全文"]
+    GEN --> T1B["note.md 成稿笔记"]
+    GEN --> T1C["Assets/ 笔记内截图"]
+    GEN --> T1D["frames/ 关键帧原图"]
+    GEN --> T1E["srt / vtt / json 字幕导出"]
+    DB -. 索引 →. T1
+```
+
 | 工具 | 说明 | 类型 |
 |------|------|------|
 | `list_tasks` | 列出全部任务（全局索引，带语义标题） | MCP 工具 |
@@ -147,30 +213,6 @@ VideoNote-Mcp 把「视频链接 → AI 结构化 Markdown 笔记」整条流水
 | `health_check` | FFmpeg / 数据库 / whisper 就绪状态 | MCP 工具 |
 
 ---
-
-## 📚 文档
-
-安装 / 配置 / 使用 / 环境变量 / 更新 / 安全等完整说明已归档到 `docs/`（README 只保留概览）：
-
-- [📇 文档索引](docs/00-文档索引.md)
-- [🏗️ 架构设计](docs/02-架构设计.md)
-- [📖 使用手册](docs/04-使用手册.md) —— 安装（4 种方式）· 配置（setup 向导 + CLI）· 环境变量 · 更新 · 安全
-- [📜 更新日志](docs/CHANGELOG.md)
-
-## ⚡ 快速开始
-
-```bash
-# 1) 一条命令装好 Skill + MCP（插件 marketplace，uvx 自动更新）
-claude plugin marketplace add HuangYincan/VideoNote-MCP
-claude plugin install videonote@videonote
-
-# 2) 配置 LLM key + 语音转写引擎（key 不进对话）
-videonote setup
-
-# 3) 重启会话，对 agent 说「帮我给这个视频做笔记」+ 链接
-```
-
-> 四种安装方式、配置细节、更新与安全见 [docs/04-使用手册.md](docs/04-使用手册.md)。
 
 ## 🏆 最佳实践
 
