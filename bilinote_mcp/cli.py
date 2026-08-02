@@ -12,6 +12,7 @@ import builtins
 import json
 import os
 import sys
+from pathlib import Path
 
 from bilinote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
 from bilinote_mcp.provider_probe import probe_chat, probe_models
@@ -506,6 +507,7 @@ def _wizard_other(inq) -> None:
                     {"name": f"视频理解默认（{'开' if vu_on else '关'} / {vu_int}s，需多模态模型）", "value": "video"},
                     {"name": f"评论/弹幕整合默认（{'开' if cm_on else '关'} / {cm_lim}条，需 SESSDATA）", "value": "comments"},
                     {"name": f"笔记默认（风格 {st_style} / 截图 {'开' if ss_on else '关'} / AGENT直接写 {'开' if ad_on else '关'}）", "value": "note-default"},
+                    {"name": f"导出格式默认（生成后自动导出：{','.join(get_app_config().get('default_export_formats') or ['无'])}）", "value": "export-default"},
                     {"name": "← 返回主菜单", "value": "back"},
                 ],
                 keybindings=_KB,
@@ -615,6 +617,26 @@ def _wizard_other(inq) -> None:
                 ).execute()
                 set_app_config("agent_direct", bool(ad))
                 print(f"{_GREEN}✓ 已保存笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}{_RESET}", file=sys.stdout)
+            elif pick == "export-default":
+                _show_header("导出格式默认")
+                print(f"{_DIM}笔记/素材任务成功后，自动把转写导出为这些格式（确定性渲染，不耗 LLM）。srt/vtt 是字幕文件，json 是结构化转写。{_RESET}", file=sys.stdout)
+                cur = get_app_config().get("default_export_formats") or []
+                choices = [
+                    {"name": "srt（字幕，标准 SubRip）", "value": "srt"},
+                    {"name": "vtt（字幕，WebVTT）", "value": "vtt"},
+                    {"name": "json（结构化转写）", "value": "json"},
+                ]
+                picked = inq.checkbox(
+                    message="选择导出格式（空格勾选，留空 = 不自动导出）",
+                    choices=[{"name": c["name"], "value": c["value"], "checked": c["value"] in cur} for c in choices],
+                    keybindings=_KB,
+                ).execute()
+                if picked:
+                    set_app_config("default_export_formats", list(picked))
+                    print(f"{_GREEN}✓ 已保存导出格式默认：{','.join(picked)}{_RESET}", file=sys.stdout)
+                else:
+                    remove_app_config("default_export_formats")
+                    print(f"{_YELLOW}⚠ 已清除导出格式默认（任务成功不再自动导出）{_RESET}", file=sys.stdout)
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
 
@@ -987,9 +1009,64 @@ def _login_cli(argv) -> None:
         print("（已取消）", file=sys.stdout)
 
 
+def _export_cli(argv) -> None:
+    """`bilinote-mcp export ...`：把已完成任务的转写导出为纯格式（srt/vtt/json）。"""
+    parser = argparse.ArgumentParser(
+        prog="bilinote-mcp export",
+        description="把已完成任务的转写导出为字幕/JSON（确定性渲染，不耗 LLM）",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_list = sub.add_parser("list", help="列出支持的导出格式")
+    p_run = sub.add_parser("export", help="导出指定任务（<task_id> 必填）")
+    p_run.add_argument("task_id", help="已完成任务的 task_id（generate_note 返回）")
+    p_run.add_argument("--format", default=None, help="逗号分隔的格式（srt,vtt,json），缺省取 setup 默认")
+    p_run.add_argument("--out-dir", default=None, help="输出目录（缺省 note_results/{task_id}/）")
+
+    opts = parser.parse_args(argv)
+    if opts.cmd == "list":
+        print("支持的导出格式（确定性渲染，不耗 LLM）：")
+        for f, desc in (("srt", "字幕，标准 SubRip"), ("vtt", "字幕，WebVTT"), ("json", "结构化转写")):
+            print(f"  - {f}: {desc}")
+        return
+
+    # 缺省格式：命令行 > setup 配置 > 全三种
+    formats = None
+    if opts.format:
+        formats = [f.strip() for f in opts.format.split(",") if f.strip()]
+    if formats is None:
+        formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
+
+    from bilinote_mcp.export import export_transcript
+
+    result_path = Path(os.environ.get("NOTE_OUTPUT_DIR", "note_results")) / f"{opts.task_id}.json"
+    if not result_path.exists():
+        print(f"✗ 找不到任务 {opts.task_id} 的结果文件（{result_path}），任务可能未成功", file=sys.stderr)
+        sys.exit(1)
+    import json as _json
+
+    transcript = None
+    try:
+        transcript = _json.loads(result_path.read_text(encoding="utf-8")).get("transcript")
+    except Exception:
+        pass
+    if not transcript:
+        print(f"✗ 任务 {opts.task_id} 没有转写结果（可能未到转写阶段）", file=sys.stderr)
+        sys.exit(1)
+
+    out_dir = opts.out_dir
+    written = export_transcript(transcript, formats=formats, out_dir=out_dir, task_id=opts.task_id)
+    if not written:
+        print(f"✗ 没有成功导出任何格式（请求: {formats}）", file=sys.stderr)
+        sys.exit(1)
+    print(f"✓ 已导出 {len(written)} 个格式（task_id={opts.task_id}）：")
+    for fmt, uri in written.items():
+        print(f"  - {fmt}: {uri}")
+
+
 def main() -> None:
-    """入口：providers / setup / transcriber / login 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
-    known = ("providers", "setup", "transcriber", "login")
+    """入口：providers / setup / transcriber / login / export 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
+    known = ("providers", "setup", "transcriber", "login", "export")
     if len(sys.argv) > 1 and sys.argv[1] in known:
         cmd = sys.argv[1]
         if cmd == "providers":
@@ -998,6 +1075,8 @@ def main() -> None:
             _setup_cli()
         elif cmd == "login":
             _login_cli(sys.argv[2:])
+        elif cmd == "export":
+            _export_cli(sys.argv[2:])
         else:
             _transcriber_cli(sys.argv[2:])
         return

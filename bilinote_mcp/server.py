@@ -181,6 +181,8 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
             NOTE_OUTPUT_DIR / f"{task_id}.status.json",
             NOTE_OUTPUT_DIR / f"dl_{task_id}",
         ])
+        # 按「导出格式默认」自动导出纯格式（srt/vtt/json，确定性渲染）——尽力而为，失败不阻断
+        _auto_export_transcript(task_id, payload.get("transcript"))
         logger.info(f"笔记生成成功 task_id={task_id}")
     except TaskCancelledError:
         logger.info(f"任务已取消 task_id={task_id}")
@@ -192,6 +194,29 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
         with _tasks_lock:
             _task_futures.pop(task_id, None)
             _task_events.pop(task_id, None)
+
+
+def _auto_export_transcript(task_id: str, transcript) -> None:
+    """笔记任务成功后按 `default_export_formats` 自动导出纯格式（srt/vtt/json）。
+
+    尽力而为：任何失败只记日志，不阻断主任务成功状态。只导出确定性机械格式，
+    不涉及 LLM/网络；导出文件自动记入 manifest（供 cleanup_note 清理）。
+    """
+    try:
+        from bilinote_mcp.config import get_app_config
+        from bilinote_mcp.export import export_transcript
+
+        default_formats = get_app_config().get("default_export_formats") or []
+        if not default_formats or not transcript:
+            return
+        export_transcript(
+            transcript,
+            formats=default_formats,
+            out_dir=NOTE_OUTPUT_DIR / task_id,
+            task_id=task_id,
+        )
+    except Exception as exc:
+        logger.warning(f"自动导出失败 task_id={task_id}: {exc}")
 
 
 def _guard_concurrency() -> None:
@@ -1120,6 +1145,57 @@ def set_downloader_cookie(platform: str, cookie: str) -> str:
         raise ValueError("platform / cookie 均必填")
     CookieConfigManager().set(platform, cookie)
     return json.dumps({"saved": True, "platform": platform}, ensure_ascii=False)
+
+
+@mcp.tool()
+def export_transcript(
+    task_id: str,
+    formats: Optional[List[str]] = None,
+    out_dir: Optional[str] = None,
+) -> str:
+    """把已完成任务的转写导出为纯格式文件（SRT/VTT/JSON），返回文件路径。
+
+    - task_id: 必填，已完成任务的 task_id（generate_note / prepare_note_material 返回）；
+    - formats: 可选，要导出的格式列表（srt/vtt/json），缺省取 setup 配置的「导出格式默认」；
+    - out_dir: 可选，输出目录（缺省为 note_results/{task_id}/）。
+
+    只做确定性机械渲染（时间轴换算），不调用 LLM。返回
+    {task_id, formats: {fmt: "file://绝对路径"}, errors: {}}，供 Agent 直接 Read。
+    """
+    from bilinote_mcp.export import export_transcript as _export
+
+    result_json = Path(NOTE_OUTPUT_DIR / f"{task_id}.json")
+    transcript = None
+    if result_json.exists():
+        try:
+            transcript = json.loads(result_json.read_text(encoding="utf-8")).get("transcript")
+        except Exception:
+            transcript = None
+    if transcript is None:
+        # fallback：{task_id}_transcript.json 缓存
+        cache = Path(NOTE_OUTPUT_DIR / f"{task_id}_transcript.json")
+        if cache.exists():
+            try:
+                transcript = json.loads(cache.read_text(encoding="utf-8"))
+            except Exception:
+                transcript = None
+    if transcript is None:
+        return json.dumps(
+            {"task_id": task_id, "error": f"找不到任务 {task_id} 的转写结果（任务可能未成功）"},
+            ensure_ascii=False,
+        )
+
+    if formats is None:
+        from bilinote_mcp.config import get_app_config
+
+        formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
+
+    out = out_dir or str(NOTE_OUTPUT_DIR / task_id)
+    written = _export(transcript, formats=formats, out_dir=out, task_id=task_id)
+    return json.dumps(
+        {"task_id": task_id, "formats": written, "errors": {}},
+        ensure_ascii=False,
+    )
 
 
 # ---------- 入口 ----------
