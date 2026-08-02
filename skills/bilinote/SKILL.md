@@ -38,6 +38,7 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
    3. **问笔记风格**（默认 detailed，9 种或自定义）→ **AGENT 自己写 Markdown**；素材包里有 `comments_danmaku` 时，笔记**新增一节「观众观点」**总结观众观点（引用实际内容，不捏造；无可总结写「（无）」）→ 呈现；
    4. 转写可能很长（如 2h 视频超上下文）→ **按章节分段精修**或让用户指定重点。
 5. **生成后是否后续优化**：手动模式**生成后必须问**；全自动模式按参数清单已确认的选择执行（要 → 基于笔记 + 完整字幕/转写精修：从字幕/转写挖更多细节、展开讲透、补齐遗漏、修正不一致、增强结构；不要 → 跳过），不再重复问。
+6. **平台接手**：`validate_url` / `generate_note` / `prepare_note_material` 返回 `handoff: True` 时，说明该链接不在内置下载器范围（bilibili/youtube/douyin/tiktok/kuaishou/本地文件之外）。**不要重试、不要报错结束**——Agent 接手：用 WebFetch / 浏览器读取页面提取视频源，或用 yt-dlp 通用模式下载，再以本地文件路径调用 `generate_note(video_url="/绝对/路径/x.mp4", platform="local", ...)`。
 
 ## 工作流
 
@@ -58,6 +59,13 @@ description: 用 BiliNote-Mcp 的 MCP 工具把视频链接/本地视频（B站/
      2. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）。
      3. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节可读 `result.transcript`。
 6. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **后续优化**（见强制规则 5：手动模式问、全自动模式按清单确认执行；要则读笔记 + 转写/字幕精修，原笔记保留对比）→ 若有多个视频，其余由 subagent 各自处理（见强制规则 3），主 agent 收集结果统一呈现。
+
+## 🖨 输出格式（可选，用户要时）
+
+MD 底稿产出后，用户可能要其他格式。**分工**：机械格式（SRT/VTT/JSON）用 MCP 工具
+`export_transcript(task_id, ...)` 直接产出（确定性、不耗 LLM）；思维导图/闪卡/LaTeX/typst/
+**用户自定义模板**由 Agent 基于底稿生成。具体步骤见
+[`reference/output-formats.md`](reference/output-formats.md)（含 LaTeX 模板选择流程）。
 
 ## 参考
 

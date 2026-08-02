@@ -14,7 +14,7 @@
 | B 站下载报 `fatal` / playurl 412 | 已修复（yt-dlp fatal 透传）；仍失败则 `set_downloader_cookie(platform="bilibili", cookie=...)` 后重试 |
 | 想用 B 站 **AI 字幕**跳过语音识别 | 引导用户跑 `bilinote-mcp login bilibili`（扫码自动存 SESSDATA），或手动 `set_downloader_cookie(...)`。AI 字幕需登录态；`raw_info.subtitles={}` 只反映手动 CC，AI 字幕在 automatic_captions |
 | 整合评论/弹幕时评论拿不到 | 未配 B 站 SESSDATA —— 引导用户 `bilinote-mcp login bilibili`；抓取失败**不阻断**笔记生成（跳过该部分） |
-| 链接不支持 | 只支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径 |
+| 链接不支持（`handoff: true`） | 内置支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径；**超出范围时工具返回 `handoff: true`——Agent 接手**：WebFetch/浏览器解析视频源，或 yt-dlp 通用模式下载后 `generate_note(video_url="/绝对/路径/x.mp4", platform="local")` |
 | 视频下载 403 / 需会员 | `set_downloader_cookie` 配置平台 Cookie |
 | `generate_note` 报「已有 N 个进行中任务（上限 M）」 | 并发已达上限 —— 等其中一些完成（或 `cancel_note` 取消）再提交；多视频用 subagent 并行 |
 

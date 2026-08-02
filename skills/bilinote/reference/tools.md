@@ -77,6 +77,16 @@
 | 已有 mp4 画面理解 | `extract_frames(mp4)`，或 `generate_note(video_url=mp4, platform="local", video_understanding=True)` |
 | 弹幕/评论 + 已有字幕 → 笔记 | `summarize_note(transcript, comments_danmaku=聚合文本, ...)` |
 
+## 多格式导出（机械格式）
+
+### `export_transcript(task_id, formats?, out_dir?)`
+- 把已完成任务的转写导出为**确定性格式**（srt/vtt/json），**不耗 LLM**。同步返回。
+- `formats` 缺省取 setup 配置的「导出格式默认」（任务成功后也会自动导出这些格式）。
+- 返回 `{task_id, formats: {fmt: "file://绝对路径"}, errors}`，文件可 Read 直接使用。
+- 适用：字幕文件（SRT/VTT）、结构化转写（JSON）、下游程序消费。
+- **创意格式**（思维导图/闪卡/LaTeX/typst/用户自定义模板）不在这里——由 Agent 基于
+  MD 底稿生成，见 [`output-formats.md`](output-formats.md)。
+
 ## 全自动 / 手动模式
 
 - **任务开始必须先问用户**「全自动」还是「手动」。
@@ -120,7 +130,7 @@
 ## 其它
 
 - `health_check()` —— ffmpeg/db/whisper 就绪状态。
-- `validate_url(url)` —— 识别平台（bilibili/youtube/douyin/tiktok/kuaishou/local）。
+- `validate_url(url)` —— 识别平台（bilibili/youtube/douyin/tiktok/kuaishou/local）。不支持的平台返回 `{supported: false, handoff: true, hint}` —— 读到 `handoff:true` 即 Agent 接手解析（见 SKILL 强制规则 6）。
 - `set_downloader_cookie(platform, cookie)` —— 设置平台 Cookie（如 B 站 `SESSDATA=...`）。
 - `fetch_comments(video_url, limit=20)` —— B 站热门评论（供生成前预览）。
 - `fetch_danmaku(video_url)` —— B 站弹幕汇总（高密度时段 + 高频词）。
@@ -139,4 +149,5 @@
 | 视频理解默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `video_understanding`/`video_interval` 即套用（默认关/6s） |
 | 评论/弹幕整合默认（setup ③） | 用户说「用默认」/ 全自动模式时不传 `include_comments`/`comments_limit` 即套用（默认关/20 条） |
 | 笔记默认（setup ③ 新增） | `default_style`（默认 detailed）/ `default_screenshot`（默认关）/ `agent_direct`（默认关，行为与之前一致）；全自动模式不传即套用 |
+| 导出格式默认（setup ③ 新增） | `default_export_formats`（srt/vtt/json，默认空）；任务成功后自动导出这些格式，`export_transcript` 不传 formats 时也套用它 |
 | AGENT 直接生成 | `prepare_note_material(video_url, ...)` → 轮询 SUCCESS → 读素材包 → **AGENT 自己写笔记**（不调用配置 LLM） |
