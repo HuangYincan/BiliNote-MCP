@@ -20,7 +20,7 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from bilinote_mcp.config import get_app_config, setup_environment
 
@@ -62,6 +62,7 @@ from app.db.model_dao import get_models_by_provider, insert_model
 from app.db.provider_dao import seed_default_providers
 from app.enmus.note_enums import DownloadQuality
 from app.enmus.task_status_enums import TaskStatus
+from app.services import pipeline
 from app.services.cookie_manager import CookieConfigManager
 from app.services.note import NOTE_OUTPUT_DIR, NoteGenerator
 from app.services.provider import ProviderService
@@ -191,6 +192,132 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
         with _tasks_lock:
             _task_futures.pop(task_id, None)
             _task_events.pop(task_id, None)
+
+
+def _guard_concurrency() -> None:
+    """并发门禁：进行中任务数达到 BILINOTE_MAX_WORKERS（默认 3）时拒绝新提交。
+
+    与 generate_note / prepare_note_material 内嵌的同一逻辑，供独立流水线步骤
+    （transcribe_media / extract_frames / summarize_note）复用，避免无界排队。
+    """
+    with _tasks_lock:
+        active = [tid for tid, f in _task_futures.items() if not f.done()]
+    _max_workers = int(os.environ.get("BILINOTE_MAX_WORKERS", "3"))
+    if len(active) >= _max_workers:
+        raise ValueError(
+            f"已有 {len(active)} 个进行中任务（上限 {_max_workers}）：请先等其中一些完成"
+            f"（或 cancel_note 取消）再提交。"
+        )
+
+
+def _run_step_task(
+    task_id: str,
+    cancel_event: Optional[threading.Event],
+    step_fn: Callable,
+    **kwargs,
+) -> None:
+    """通用后台步骤执行器：为独立流水线步骤（转写/抽帧/LLM 总结）提供统一生命周期。
+
+    与 _run_note_task 同一套语义：排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING；
+    否则写 INITIALIZING → 执行 step_fn(task_id, cancel_event, **kwargs) 得到 dict payload →
+    原子落盘 {task_id}.json + 记入 manifest → 成功。异常 → FAILED，取消 → CANCELLED，
+    finally 从 _task_futures/_task_events 弹出（释放并发槽位）。
+    """
+    try:
+        _check_cancel(cancel_event)  # 排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING
+        _write_status(task_id, "INITIALIZING", message="正在准备…")
+        payload = step_fn(task_id, cancel_event, **kwargs)
+        (NOTE_OUTPUT_DIR / f"{task_id}.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+        # 记录结果/状态 JSON 到 manifest（尽力而为，失败不阻断）
+        record_task_paths(task_id, [
+            NOTE_OUTPUT_DIR / f"{task_id}.json",
+            NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+        ])
+        logger.info(f"步骤任务成功 task_id={task_id}")
+    except TaskCancelledError:
+        logger.info(f"任务已取消 task_id={task_id}")
+        _write_status(task_id, TaskStatus.CANCELLED, message="任务已取消")
+    except Exception as e:
+        logger.error(f"步骤任务异常 task_id={task_id}: {e}", exc_info=True)
+        _write_status(task_id, TaskStatus.FAILED, message=str(e))
+    finally:
+        with _tasks_lock:
+            _task_futures.pop(task_id, None)
+            _task_events.pop(task_id, None)
+
+
+def _step_transcribe(task_id: str, cancel_event: Optional[threading.Event], file_path: str) -> dict:
+    """transcribe_media 的后台步骤：转写 → payload {kind: transcript, transcript: {...}}。"""
+    _check_cancel(cancel_event)
+    transcript = pipeline.transcribe_audio(file_path)
+    return {"kind": "transcript", "transcript": transcript}
+
+
+def _step_extract_frames(
+    task_id: str,
+    cancel_event: Optional[threading.Event],
+    video_path: str,
+    video_interval: int,
+    grid_size: Optional[List[int]],
+    save_dir: str,
+) -> dict:
+    """extract_frames 的后台步骤：抽帧 → payload {kind: frames, frames: [file://...]}。"""
+    _check_cancel(cancel_event)
+    frames = pipeline.extract_frames(
+        video_path,
+        video_interval=video_interval,
+        grid_size=grid_size,
+        save_dir=save_dir,
+    )
+    return {"kind": "frames", "frames": frames}
+
+
+def _step_summarize(
+    task_id: str,
+    cancel_event: Optional[threading.Event],
+    material: dict,
+    provider_id: str,
+    model_name: Optional[str],
+    style: Optional[str],
+    extras: Optional[str],
+    formats: Optional[List[str]],
+) -> dict:
+    """summarize_note 的后台步骤：LLM 总结 → payload {kind: note, markdown, title}。"""
+    _check_cancel(cancel_event)
+    gpt = pipeline.get_gpt(provider_id, model_name)
+    markdown = pipeline.summarize_material(
+        material,
+        gpt,
+        style=style,
+        extras=extras,
+        formats=formats,
+        checkpoint_key=task_id,
+        cancel_event=cancel_event,
+    )
+    return {"kind": "note", "markdown": markdown, "title": material.get("title")}
+
+
+def _coerce_local_path(p: str) -> Path:
+    """把 file:// URI 或普通路径规整为本地 Path（expanduser 展开 ~）。"""
+    s = str(p or "").strip()
+    if s.startswith("file://"):
+        from urllib.parse import urlparse
+
+        s = urlparse(s).path
+    return Path(s).expanduser()
+
+
+def _coerce_transcript(transcript) -> dict:
+    """把 transcript 参数规整成 dict（兼容 dict / JSON 字符串 / None）。"""
+    if isinstance(transcript, str):
+        try:
+            return json.loads(transcript) or {}
+        except Exception:
+            return {}
+    return transcript or {}
 
 
 def _detect_platform(url: str) -> str:
@@ -575,6 +702,183 @@ def fetch_danmaku(video_url: str) -> str:
         logger.warning(f"fetch_danmaku 失败: {exc}")
         result = {"ok": False, "source": "bilibili", "error": str(exc)}
     return json.dumps(result, ensure_ascii=False)
+
+
+# ---------- 独立流水线步骤（复用 app/services/pipeline.py 的解耦步骤） ----------
+
+
+@mcp.tool()
+def fetch_subtitles(video_url: str, platform: Optional[str] = None) -> str:
+    """只取平台字幕（人工/自动字幕），不下载音视频、不转写、不调 LLM。
+
+    - video_url: 必填，B 站/YouTube/抖音/快手链接或本地文件路径；
+    - platform: 可省略，自动识别。
+
+    同步、快，适合快速预览字幕。成功返回
+    {language, full_text, segments}（segments 每项含 start/end/text）；
+    无字幕或获取失败返回 {ok: False, error}，不会抛异常。
+    需要语音转写（ASR，把音频变成字幕）用 transcribe_media；
+    需要完整 AI 笔记用 generate_note。
+    """
+    try:
+        transcript = pipeline.fetch_subtitles(video_url, platform)
+        if transcript is None:
+            return json.dumps(
+                {"ok": False, "error": "该视频没有可用平台字幕（人工/自动字幕）或获取失败"},
+                ensure_ascii=False,
+            )
+        return json.dumps(transcript, ensure_ascii=False)
+    except Exception as exc:
+        logger.warning(f"fetch_subtitles 失败: {exc}")
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def transcribe_media(file_path: str) -> str:
+    """对本地音频/视频文件做语音识别（ASR），异步返回转写全文 + 分段。
+
+    - file_path: 必填，本地文件路径（mp3/mp4/webm/wav/flac 等，需 ffmpeg 可解析）。
+
+    不下载、不抓字幕、不调 LLM。后台执行（长音频可能较慢），立即返回
+    {task_id, status: PENDING, kind: transcript}；用 get_task_status / wait_for_note 查询，
+    SUCCESS 时 result 含 {kind: transcript, transcript: {language, full_text, segments}}。
+    转写引擎由 get_transcriber_config / set_transcriber 配置（本地 fast-whisper 或云端 groq/bcut 等）。
+    只要平台自带字幕（不转写）用 fetch_subtitles。
+    """
+    p = _coerce_local_path(file_path)
+    if not p.exists():
+        raise ValueError(f"本地文件不存在: {file_path}")
+    _guard_concurrency()
+    task_id = uuid.uuid4().hex
+    _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
+    params = dict(file_path=str(p))
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_step_task, task_id, cancel_event, step_fn=_step_transcribe, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
+    logger.info(f"已提交转写任务 task_id={task_id}")
+    return json.dumps(
+        {"task_id": task_id, "status": "PENDING", "kind": "transcript"}, ensure_ascii=False
+    )
+
+
+@mcp.tool()
+def extract_frames(
+    video_path: str,
+    video_interval: int = 6,
+    grid_size: Optional[List[int]] = None,
+) -> str:
+    """对本地视频按间隔抽关键帧（画面理解素材），异步返回持久化的帧图片 file:// 路径。
+
+    - video_path: 必填，本地视频文件路径（mp4/mov/webm 等，需 ffmpeg 可解析）；
+    - video_interval: 截帧间隔（秒），默认 6；
+    - grid_size: 拼图网格尺寸（如 [3,3]），默认 [3,3]，会把截帧拼成网格图 + 单帧图。
+
+    后台执行（较慢），立即返回 {task_id, status: PENDING, kind: frames}；
+    用 get_task_status / wait_for_note 查询，SUCCESS 时 result 含
+    {kind: frames, frames: [file://...]}；帧图片可被多模态模型 Read，或直接传给
+    summarize_note 的 frames 参数参与笔记总结。
+    """
+    p = _coerce_local_path(video_path)
+    if not p.exists():
+        raise ValueError(f"本地视频文件不存在: {video_path}")
+    if grid_size is None:
+        grid_size = [3, 3]
+    _guard_concurrency()
+    task_id = uuid.uuid4().hex
+    _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
+    params = dict(
+        video_path=str(p),
+        video_interval=int(video_interval) or 6,
+        grid_size=grid_size,
+        save_dir=str(NOTE_OUTPUT_DIR / task_id / "frames"),
+    )
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_step_task, task_id, cancel_event, step_fn=_step_extract_frames, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
+    logger.info(f"已提交抽帧任务 task_id={task_id}")
+    return json.dumps(
+        {"task_id": task_id, "status": "PENDING", "kind": "frames"}, ensure_ascii=False
+    )
+
+
+@mcp.tool()
+def summarize_note(
+    transcript: dict,
+    frames: Optional[List[str]] = None,
+    comments_danmaku: Optional[str] = None,
+    title: Optional[str] = None,
+    style: Optional[str] = None,
+    extras: Optional[str] = None,
+    format: Optional[List[str]] = None,
+    provider_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+) -> str:
+    """用 LLM 把已有素材总结成 AI Markdown 笔记（不下载、不转写、不抽帧）。
+
+    - transcript: 必填，转写结果 dict {language, full_text, segments}（transcribe_media /
+      fetch_subtitles 的返回，或 prepare_note_material 的 result.transcript）；
+    - frames: 可选，帧图片 file:// 路径列表（extract_frames 的返回），传了且模型多模态时参与总结；
+    - comments_danmaku: 可选，B 站弹幕+评论参考文本（fetch_comments_danmaku 的返回）；
+    - title: 可选，视频标题（默认空）；
+    - style: 输出风格（minimal 精简/detailed 详细/academic 学术/tutorial 教程/xiaohongshu 小红书/
+      life_journal 生活向/task_oriented 任务导向/business 商业风格/meeting_minutes 会议纪要）；
+      不传时用 setup ③ 配置的默认（默认 detailed），显式传入始终覆盖；
+    - extras: 附加到 prompt 末尾的自定义指令（自定义风格用 extras）；
+    - format: 附加内容，如 ["toc","link","screenshot","summary"]；
+    - provider_id: LLM 供应商 id（先 list_providers 查看，add_provider 新增），必填；
+    - model_name: 省略时取已配置的默认模型（setup 向导设置），否则取该供应商第一个可用模型。
+
+    后台执行（LLM 总结较慢），立即返回 {task_id, status: PENDING, kind: note}；
+    用 get_task_status / wait_for_note 查询，SUCCESS 时 result 含
+    {kind: note, markdown, title}。
+    只想要素材（转写/帧/评论）自行写笔记时用 prepare_note_material；一步到位用 generate_note。
+    """
+    if not provider_id:
+        raise ValueError("需要 provider_id（先调用 list_providers 查看，或 add_provider 新增 LLM 供应商）")
+    if not model_name:
+        model_name = get_app_config().get(f"default_model:{provider_id}") or ""
+    if not model_name:
+        models = get_models_by_provider(provider_id)
+        if models:
+            model_name = models[0]["model_name"]
+    if not model_name:
+        raise ValueError(
+            f"供应商 {provider_id} 还没有可用模型：请先 list_models 查看，或 add_model 添加模型名"
+        )
+    if style is None:
+        style = get_app_config().get("default_style") or "detailed"
+    material = {
+        "title": title,
+        "transcript": _coerce_transcript(transcript),
+        "frames": frames or [],
+        "comments_danmaku": comments_danmaku,
+        "video_path": None,
+        "audio_path": None,
+    }
+    _guard_concurrency()
+    task_id = uuid.uuid4().hex
+    _write_status(task_id, TaskStatus.PENDING, message="任务排队中")
+    params = dict(
+        material=material,
+        provider_id=provider_id,
+        model_name=model_name,
+        style=style,
+        extras=extras,
+        formats=format or [],
+    )
+    cancel_event = threading.Event()
+    future = _pool.submit(_run_step_task, task_id, cancel_event, step_fn=_step_summarize, **params)
+    with _tasks_lock:
+        _task_futures[task_id] = future
+        _task_events[task_id] = cancel_event
+    logger.info(f"已提交总结任务 task_id={task_id} provider={provider_id} model={model_name}")
+    return json.dumps(
+        {"task_id": task_id, "status": "PENDING", "kind": "note"}, ensure_ascii=False
+    )
 
 
 @mcp.tool()
