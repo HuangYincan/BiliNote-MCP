@@ -276,6 +276,10 @@ Safety: only manifest-recorded / explicit-prefix paths are deleted, `resolve()`-
 |------|------|
 | `generate_note` | Submit a video URL, async note generation, returns task_id (supports video understanding + screenshot portable notes + `extras` custom style) |
 | `prepare_note_material` | Download/transcribe/frame-sample/comments only, **does NOT call the configured LLM**; returns a material package (`transcript.full_text` / `frames` / `comments_danmaku`) for AGENT direct generation (see [Full-auto / Manual mode + AGENT direct generation](#full-auto--manual-mode--agent-direct-generation)) |
+| `fetch_subtitles` | Fetch platform subtitles only (no download/transcription), returns subtitle JSON |
+| `transcribe_media` | Speech-to-text (ASR) only: local audio/video → transcript (async, poll) |
+| `extract_frames` | Video-understanding material only: local mp4 → keyframe `file://` list (async, poll) |
+| `summarize_note` | LLM summarization only: consumes a material package (any combination of subtitle/frames/comments) → markdown (async, poll) |
 | `get_task_status` / `wait_for_note` | Poll task progress / blocking wait for the final Markdown |
 | `cancel_note` | Cancel a running/queued task (cooperative; takes effect at the next phase boundary) |
 | `list_providers` / `add_provider` / `update_provider` | View (masked) / add / update providers (fill keys via CLI) |

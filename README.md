@@ -276,6 +276,10 @@ generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, f
 |------|------|
 | `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
 | `prepare_note_material` | 只跑下载/转写/抽帧/评论，**不调用配置 LLM**；返回素材包（`transcript.full_text` / `frames` / `comments_danmaku`），供 AGENT 直接生成笔记（见[全自动 / 手动模式 + AGENT 直接生成](#全自动--手动模式--agent-直接生成)） |
+| `fetch_subtitles` | 只取平台字幕（不下载/不转写），返回字幕 JSON |
+| `transcribe_media` | 只做语音识别（ASR）：本地音频/视频 → 转写（异步，轮询） |
+| `extract_frames` | 只做画面理解素材：本地 mp4 → 关键帧 file:// 列表（异步，轮询） |
+| `summarize_note` | 只做 LLM 总结：吃素材包（字幕/帧/评论任意组合）→ markdown（异步，轮询） |
 | `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
 | `cancel_note` | 取消进行中/排队的任务（协作式，下一阶段边界生效） |
 | `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |

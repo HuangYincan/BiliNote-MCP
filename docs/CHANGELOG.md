@@ -4,6 +4,7 @@
 
 ## 维护（2026-08-01）
 
+- **流水线模块解耦**：新增独立步骤层 `app/services/pipeline.py`（`fetch_subtitles` / `transcribe_audio` / `extract_frames` / `fetch_comments_danmaku` / `summarize_material` 五个无状态步骤函数），`NoteGenerator.generate()` 内部改为复用它们（`_get_transcript` / `_transcribe_audio` / `_fetch_comments_danmaku` / `_summarize_text` 改薄委托，行为不变）；新增 4 个独立 MCP 工具 —— `fetch_subtitles`（同步，只取字幕）、`transcribe_media`（异步，只做 ASR）、`extract_frames`（异步，本地 mp4 → 关键帧 file://）、`summarize_note`（异步，吃素材包做 LLM 总结）—— 只抓弹幕评论 / 只做语音识别 / 已有字幕+画面理解 / 已有 mp4 画面理解 等任意组合都可用（工具 22 → **26**）。新增 `tests/test_pipeline_steps.py`（14 项：字幕/转写/抽帧落盘/评论聚合/summarize 素材包，全 mock）。SKILL reference / README 中英 / CHANGELOG 同步。
 - **README 结构调整**：「真实端到端使用示例」上移到「快速开始（TL;DR）」之后、安装之前（含三份成品笔记的直接链接 + 完整过程记录）；安装章节前新增「以下内容写给 Agent 看，人类可让 Agent 安装」说明；顺手修复「图片插入（便携笔记）」章节一处重复行。README 中英同步。
 - **新增真实端到端使用示例 `examples/note-generation-example/`**：一次「3 个 B 站链接 + 输出目录」的极简 Prompt 自动生成三份精修笔记（参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修），附三份成品笔记（`note.md` 精修版 + `note_original.md` 原版 + `Assets/` 截图）与完整过程记录（`README.md`）。README 中英加「真实端到端使用示例」入口。
 - **SKILL 全自动改为「列出完整参数待确认」**：任务开始问「全自动/手动」后，全自动不再静默套默认，而是**先用 setup 默认解析出本次任务将用的完整参数清单一次性列给用户确认**（生成方式/LLM 模型（或选 AGENT 直接生成 `agent_direct`）/ 风格 `default_style` / 视频理解默认 / 评论默认 / 截图默认 / **生成后是否 AGENT 后续优化**）；用户确认即生成，要改某项再以提问方式改，说「你定」用默认。「AGENT 直接生成」改为在**选 LLM 模型阶段**提供（默认用配置 LLM，可选 AGENT 直接生成，不走配置 LLM）。手动模式不变（逐个问）。SKILL.md / reference/tools.md / README（中英）/ docs/04 同步。

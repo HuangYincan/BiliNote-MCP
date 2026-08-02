@@ -47,6 +47,36 @@
   ```
 - 用途：**AGENT 直接生成**（agent_direct）—— AGENT 自己读 `transcript.full_text`、用 Read 看 `frames` 图片、按 `comments_danmaku` 写「观众观点」章节，不经配置 LLM。
 
+## 模块解耦（独立步骤工具）
+
+流水线各阶段可**独立调用、任意组合**：不想走整条 `generate_note` 时，可只做其中一步，或自己拼素材后交给 `summarize_note`。**素材包**（material dict，见上方 `prepare_note_material` 返回结构）是步骤间传递对象。
+
+### `fetch_subtitles(video_url, platform?)`
+- **只取平台字幕**（不下载、不转写），同步返回 `{language, full_text, segments}`；无字幕/失败返回 `{ok: false, error}`。
+- 适用：先看看平台有没有字幕、只要字幕文本。
+
+### `transcribe_media(file_path)`
+- **只做语音识别（ASR）**：给定本地音频/视频文件 → 异步任务，`get_task_status` 轮询到 `SUCCESS` 后 `result` 为 `{kind: "transcript", transcript: {language, full_text, segments}}`。
+- 适用：已有音频/视频文件，只想转成文字；不下载、不总结。
+
+### `extract_frames(video_path, video_interval=6, grid_size=[3,3])`
+- **只做视频画面理解素材**：给定本地 mp4 → 按间隔抽帧并持久化到 `note_results/{task_id}/frames/`，`result` 为 `{kind: "frames", frames: ["file:///绝对/路径/frame_1.jpg", ...]}`。
+- 适用：已有 mp4 只想要关键帧（多模态模型用 Read 看图）。
+
+### `summarize_note(transcript, frames?, comments_danmaku?, title?, style?, extras?, format?, provider_id?, model_name?)`
+- **只做 LLM 总结**：吃**素材包**（转写/帧/评论任意组合）→ 异步任务，`result` 为 `{kind: "note", markdown, title}`。
+- `transcript` 传 `{language, full_text, segments}`；`frames` 传 `extract_frames` 返回的 file:// 路径列表；`comments_danmaku` 传弹幕+评论文本（可用 `fetch_comments` / `fetch_danmaku` 或 `fetch_comments_danmaku` 聚合）。`provider_id` 必填，`model_name` 省略取默认模型。
+- 适用：已有字幕/帧/评论，不想重新下载转写，只让 LLM 出笔记。
+
+### 任意组合示例
+| 场景 | 组合 |
+|------|------|
+| 只抓弹幕+评论区观点 | `fetch_comments` / `fetch_danmaku`（独立，不生成笔记） |
+| 只做语音识别 | `transcribe_media(音频/视频文件)` |
+| 已有字幕 + 画面理解 | `extract_frames(mp4)` + 字幕 → `summarize_note(transcript=字幕, frames=帧)`（不重新下载/转写） |
+| 已有 mp4 画面理解 | `extract_frames(mp4)`，或 `generate_note(video_url=mp4, platform="local", video_understanding=True)` |
+| 弹幕/评论 + 已有字幕 → 笔记 | `summarize_note(transcript, comments_danmaku=聚合文本, ...)` |
+
 ## 全自动 / 手动模式
 
 - **任务开始必须先问用户**「全自动」还是「手动」。
