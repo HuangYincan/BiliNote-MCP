@@ -1223,6 +1223,37 @@ def merge_audio(files: List[str], out_dir: Optional[str] = None) -> str:
         return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
 
+@mcp.tool()
+def diarize_media(
+    audio_file: str,
+    num_speakers: Optional[int] = None,
+    hf_token: Optional[str] = None,
+) -> str:
+    """对音频做说话人分离（pyannote，可选依赖），返回说话人时间段。
+
+    - audio_file: 必填，本地音频/视频文件（自动归一化为 16kHz mono wav 再分离）；
+    - num_speakers: 可选，说话人数提示（缺省自动检测）；
+    - hf_token: 可选，HuggingFace token（缺省取环境变量 HUGGINGFACE_HUB_TOKEN）。
+
+    需先安装 pyannote 并在 huggingface.co 同意模型授权（setup 勾选「说话人分离」时引导）。
+    返回 {ok, turns: [{start, end, speaker}], num_speakers}；未安装/未配 token 时
+    返回 {ok: false, error}（含安装指引）。
+    """
+    try:
+        from app.services.diarization import diarize_audio
+        from app.transcriber.audio_preprocess import normalize_to_wav
+
+        wav = normalize_to_wav(audio_file)
+        turns = diarize_audio(wav, hf_token=hf_token, num_speakers=num_speakers)
+        return json.dumps(
+            {"ok": True, "turns": turns, "num_speakers": len({t["speaker"] for t in turns})},
+            ensure_ascii=False,
+        )
+    except Exception as exc:
+        logger.warning(f"diarize_media 失败: {exc}")
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+
 # ---------- 入口 ----------
 
 
