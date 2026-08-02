@@ -1202,6 +1202,27 @@ def export_transcript(
     )
 
 
+@mcp.tool()
+def merge_audio(files: List[str], out_dir: Optional[str] = None) -> str:
+    """把多个音频/视频文件合并为一个 16kHz mono wav（FFmpeg concat）。
+
+    - files: 必填，至少 2 个本地文件路径（mp3/wav/m4a/mp4 等，编码可不同——自动统一转 16kHz mono）；
+    - out_dir: 可选，输出目录（缺省当前目录），输出为 merged.wav。
+
+    用途：多段录音/会议分段/多个本地视频拼成一段再转写。返回
+    {ok, path: "file://绝对路径"} 或 {ok: false, error}。
+    """
+    from app.services.merge import merge_audio as _merge
+
+    try:
+        out = out_dir or str(Path.cwd())
+        merged = _merge(files, out_dir=out)
+        return json.dumps({"ok": True, "path": Path(merged).as_uri()}, ensure_ascii=False)
+    except Exception as exc:
+        logger.warning(f"merge_audio 失败: {exc}")
+        return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+
+
 # ---------- 入口 ----------
 
 
