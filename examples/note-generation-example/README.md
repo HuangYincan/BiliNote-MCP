@@ -1,4 +1,4 @@
-# BiliNote-MCP 使用案例：一条 Prompt，三个视频自动生成精修笔记
+# VideoNote-MCP 使用案例：一条 Prompt，三个视频自动生成精修笔记
 
 ## 前置参数
 
@@ -6,13 +6,13 @@
 - 语音转录模型：Bcut（云端，无需本地下载模型）
 - B 站账号已扫码登录（SESSDATA）
 - Agent 环境：配有 DeepSeek-V4-Flash 的 ClaudeCode 环境
-- 基于 v0.1.1 的 BiliNote-MCP 生成
+- 基于 v0.1.1 的 VideoNote-MCP 生成
 
 ## Prompt
 
 用户只给了下面这几句话（3 个链接 + 1 个输出目录，**一个参数都没说明**）：
 
-> 利用 BiliNote，在 `Path/To/Note` 中，生成以下三个视频的笔记：
+> 利用 VideoNote，在 `Path/To/Note` 中，生成以下三个视频的笔记：
 >
 > - [雅思教父刘洪波的雅思真经第一课_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV1c54y187SH/)
 > - [和解剖了4000具尸体的法医，一起看了影片中的尸体..._哔哩哔哩_bilibili](https://www.bilibili.com/video/BV1QEgZ6rEGj/)
@@ -20,7 +20,7 @@
 
 ## 亮点
 
-Agent 依据 BiliNote 的 SKILL 全自动跑完：**环境检查 → 链接识别 → 找到唯一已配 key 的供应商 → 列模型 → 逐项询问参数 → 多视频并行生成 → 主动询问并执行后续优化**。用户全程无需了解任何工具细节，只需回答几个选择题。
+Agent 依据 VideoNote 的 SKILL 全自动跑完：**环境检查 → 链接识别 → 找到唯一已配 key 的供应商 → 列模型 → 逐项询问参数 → 多视频并行生成 → 主动询问并执行后续优化**。用户全程无需了解任何工具细节，只需回答几个选择题。
 
 ## 模型回答过程
 
