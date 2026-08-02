@@ -147,14 +147,80 @@ def transcribe_audio(audio_file: Union[str, Path], transcriber: Optional[Transcr
     """只做语音识别：给定音频/视频文件 → 转写结果 asdict（{language, full_text, segments}）。
 
     不配置 transcriber 时按当前转写器配置构建。
+    当 setup 启用「音频预处理」（enable_preprocess）时，先归一化为 16kHz mono wav，
+    超长音频按块转写并拼接（时间偏移补偿）；默认关闭时行为与之前完全一致。
     """
     audio_file = str(audio_file)
     if not Path(audio_file).exists():
         raise FileNotFoundError(f"音频/视频文件不存在: {audio_file}")
     if transcriber is None:
         transcriber = build_transcriber()
-    tr = transcriber.transcript(file_path=audio_file)
-    return asdict(tr)
+
+    if not _preprocess_enabled():
+        tr = transcriber.transcript(file_path=audio_file)
+        return asdict(tr)
+
+    # 预处理模式：归一 + 分块 → 逐块转写 + 时间偏移拼接
+    return _transcribe_with_preprocess(audio_file, transcriber)
+
+
+def _preprocess_enabled() -> bool:
+    """读转写配置的 enable_preprocess（默认关）。"""
+    try:
+        from app.services.transcriber_config_manager import TranscriberConfigManager
+
+        return TranscriberConfigManager().get_enable_preprocess()
+    except Exception:
+        return False
+
+
+def _transcribe_with_preprocess(audio_file: str, transcriber: Transcriber) -> dict:
+    """预处理后逐块转写并拼接 segments（时间偏移补偿）。"""
+    from app.transcriber.audio_preprocess import chunk_if_long, normalize_to_wav
+    from app.models.transcriber_model import TranscriptResult, TranscriptSegment
+
+    # 归一化到 16kHz mono wav（工作目录 = 源文件同目录）
+    wav = normalize_to_wav(audio_file)
+    chunks = chunk_if_long(wav, max_seconds=1800)
+
+    all_segments: List[TranscriptSegment] = []
+    offset = 0.0
+    language = None
+    for chunk in chunks:
+        try:
+            tr = transcriber.transcript(file_path=chunk)
+        except Exception as exc:  # noqa: BLE001 —— 单块失败跳过，不阻断整段
+            logger.warning(f"预处理分块转写失败（跳过该块）: {exc}")
+            continue
+        if language is None and tr.language:
+            language = tr.language
+        for seg in tr.segments or []:
+            all_segments.append(
+                TranscriptSegment(
+                    start=round(seg.start + offset, 3),
+                    end=round(seg.end + offset, 3),
+                    text=seg.text,
+                )
+            )
+        offset += chunk_duration_guess(chunk)
+
+    full_text = "".join(s.text for s in all_segments)
+    return asdict(
+        TranscriptResult(language=language, full_text=full_text, segments=all_segments)
+    )
+
+
+def chunk_duration_guess(wav_path: str) -> float:
+    """估算分块时长（秒），用于时间偏移。用 ffprobe 精确值，失败回退块时长。"""
+    try:
+        from app.transcriber.audio_preprocess import probe_duration
+
+        d = probe_duration(wav_path)
+        if d > 0:
+            return d
+    except Exception:
+        pass
+    return 1800.0  # 兜底：等于默认分块时长
 
 
 # ---------------- 步骤 3：视频关键帧抽取（画面理解素材） ----------------
