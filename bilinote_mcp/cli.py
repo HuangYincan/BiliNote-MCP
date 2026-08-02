@@ -782,6 +782,24 @@ def _setup_cli_fallback() -> None:
     ad = _ask("   默认用 AGENT 直接写笔记（不走配置 LLM）？[y/N]", default="N").lower() == "y"
     set_app_config("agent_direct", bool(ad))
     print(f"   ✓ 笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}", file=sys.stdout)
+    print("   导出格式默认：任务成功后自动把转写导出为纯格式（确定性渲染，不耗 LLM）", file=sys.stdout)
+    print("     1) srt（字幕，标准 SubRip）  2) vtt（字幕，WebVTT）  3) json（结构化转写）", file=sys.stdout)
+    print("     输入逗号分隔编号，如 1,3；留空 = 不自动导出", file=sys.stdout)
+    cur_ex = get_app_config().get("default_export_formats") or []
+    _EXPORT_OPTS = ["srt", "vtt", "json"]
+    ex_sel = _ask(f"   选择导出格式（当前 {','.join(cur_ex) if cur_ex else '无'}）", default="")
+    if ex_sel.strip():
+        picked = []
+        for part in ex_sel.split(","):
+            part = part.strip()
+            if part.isdigit() and 1 <= int(part) <= 3:
+                picked.append(_EXPORT_OPTS[int(part) - 1])
+        if picked:
+            set_app_config("default_export_formats", picked)
+            print(f"   ✓ 已保存导出格式默认：{','.join(picked)}", file=sys.stdout)
+    elif cur_ex:
+        remove_app_config("default_export_formats")
+        print("   ✓ 已清除导出格式默认（任务成功不再自动导出）", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
 
