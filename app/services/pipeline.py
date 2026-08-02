@@ -52,7 +52,11 @@ _PLATFORM_HINTS = [
 # ---------------- 平台 / 引擎 ----------------
 
 def detect_platform(url: str) -> str:
-    """从 URL / 本地路径识别平台（与 server._detect_platform 一致）。"""
+    """从 URL / 本地路径识别平台（与 server._detect_platform 一致）。
+
+    未知 URL 返回 `"unsupported"`（不再 raise）——调用方据此把任务交给 Agent 接手解析
+    （见 handoff_result / SKILL 平台接手小节）。空 url 仍 raise ValueError。
+    """
     u = (url or "").strip().lower()
     if not u:
         raise ValueError("url 为空")
@@ -61,9 +65,28 @@ def detect_platform(url: str) -> str:
     for platform, needles in _PLATFORM_HINTS:
         if any(n in u for n in needles):
             return platform
-    raise ValueError(
-        f"无法识别视频平台: {url[:80]}（支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径）"
-    )
+    return "unsupported"
+
+
+def handoff_result(url: str, reason: str = "") -> dict:
+    """构建「平台不支持 → 交给 Agent 接手」的结构化结果。
+
+    供 server 层（validate_url / generate_note / prepare_note_material）在检测到
+    unsupported 平台时返回。Agent 读到 `handoff: True` 就知道要自行解析：
+    用 WebFetch / 浏览器读取页面提取视频源，或用 yt-dlp 通用模式下载后以本地文件调用。
+    """
+    return {
+        "ok": False,
+        "platform": "unsupported",
+        "url": url,
+        "reason": reason or "该平台不在内置下载器范围",
+        "handoff": True,
+        "hint": (
+            "该平台不在内置范围（bilibili/youtube/douyin/tiktok/kuaishou/本地文件）。"
+            "请用 WebFetch/浏览器解析视频源，或用 yt-dlp 通用模式下载后以本地文件调用"
+            "（generate_note platform='local'）。"
+        ),
+    }
 
 
 def get_downloader(platform: str) -> Downloader:

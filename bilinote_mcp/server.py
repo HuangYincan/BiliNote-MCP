@@ -346,18 +346,12 @@ def _coerce_transcript(transcript) -> dict:
 
 
 def _detect_platform(url: str) -> str:
-    """从 URL / 本地路径识别平台。"""
-    u = (url or "").strip().lower()
-    if not u:
-        raise ValueError("url 为空")
-    if u.startswith(("file:", "/", "./", "../", "~/")) or Path(u).expanduser().exists():
-        return "local"
-    for platform, needles in _PLATFORM_HINTS:
-        if any(n in u for n in needles):
-            return platform
-    raise ValueError(
-        f"无法识别视频平台: {url[:80]}（支持 bilibili / youtube / douyin / tiktok / kuaishou / 本地文件路径）"
-    )
+    """从 URL / 本地路径识别平台（与 pipeline.detect_platform 一致）。
+
+    未知 URL 返回 `"unsupported"` 而非 raise —— 调用方据此时将任务交给 Agent 接手
+    （返回 handoff 结构，见 pipeline.handoff_result）。空 url 仍 raise ValueError。
+    """
+    return pipeline.detect_platform(url)
 
 
 def _fetch_live_models(provider: Dict) -> Optional[List[str]]:
@@ -420,6 +414,9 @@ def generate_note(
         raise ValueError("需要 provider_id（先调用 list_providers 查看，或 add_provider 新增 LLM 供应商）")
     if platform is None:
         platform = _detect_platform(video_url)
+    if platform == "unsupported":
+        # 平台不在内置范围 → 返回 handoff 结构，交给 Agent 接手解析（WebFetch/浏览器/yt-dlp）
+        return json.dumps(pipeline.handoff_result(video_url), ensure_ascii=False)
     if platform == "local" and not Path(video_url).expanduser().exists():
         raise ValueError(f"本地文件不存在: {video_url}")
 
@@ -527,6 +524,9 @@ def prepare_note_material(
     """
     if platform is None:
         platform = _detect_platform(video_url)
+    if platform == "unsupported":
+        # 平台不在内置范围 → 返回 handoff 结构，交给 Agent 接手解析
+        return json.dumps(pipeline.handoff_result(video_url), ensure_ascii=False)
     if platform == "local" and not Path(video_url).expanduser().exists():
         raise ValueError(f"本地文件不存在: {video_url}")
 
@@ -1127,9 +1127,16 @@ def validate_url(url: str) -> str:
     """判断视频链接属于哪个平台，以及是否受支持。
 
     支持：bilibili（含 b23.tv）、youtube（含 youtu.be）、douyin、tiktok、kuaishou、本地文件路径。
+    不支持的平台返回 {supported: False, handoff: True, ...} —— Agent 读到 handoff:True
+    就该自行接手解析（WebFetch/浏览器/yt-dlp 通用模式）。
     """
     try:
         platform = _detect_platform(url)
+        if platform == "unsupported":
+            return json.dumps(
+                {"supported": False, **pipeline.handoff_result(url)},
+                ensure_ascii=False,
+            )
         return json.dumps(
             {"supported": True, "platform": platform, "reason": f"识别为 {platform}"},
             ensure_ascii=False,
