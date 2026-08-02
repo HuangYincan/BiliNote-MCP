@@ -210,6 +210,7 @@ def _wizard(inq) -> None:
                 {"name": "① LLM 供应商（填 key / 检测连接 / 默认模型）", "value": "llm"},
                 {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
                 {"name": "③ 其他（平台 Cookie / 默认笔记位置 / 视频理解默认 / 评论·弹幕整合默认 / 笔记默认）", "value": "other"},
+                {"name": "④ 数据管理（查看 / 清理任务产物）", "value": "data"},
                 {"name": "✔ 完成 / 退出", "value": "exit"},
             ],
             default="llm",
@@ -221,6 +222,8 @@ def _wizard(inq) -> None:
             _wizard_transcriber(inq)
         elif choice == "other":
             _wizard_other(inq)
+        elif choice == "data":
+            _wizard_data(inq)
         else:
             print(f"{_GREEN}✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`{_RESET}", file=sys.stdout)
             return
@@ -701,6 +704,122 @@ def _wizard_other(inq) -> None:
         return  # 左键/Ctrl-C → 返回主菜单
 
 
+def _wizard_data(inq) -> None:
+    """setup ④ 数据管理：查看任务列表 / 清理单任务 / 全局清理。"""
+    try:
+        while True:
+            _show_header("④ 数据管理")
+            pick = inq.select(
+                message="选择操作（← 返回）",
+                choices=[
+                    {"name": "查看任务列表（task_id | 标题 | 状态）", "value": "list"},
+                    {"name": "清理单个任务", "value": "cleanup-one"},
+                    {"name": "全局清理（清空所有任务产物）", "value": "cleanup-all"},
+                    {"name": "← 返回主菜单", "value": "back"},
+                ],
+                keybindings=_KB,
+            ).execute()
+            if pick == "back":
+                return
+            if pick == "list":
+                _wizard_data_list(inq)
+            elif pick == "cleanup-one":
+                _wizard_data_cleanup_one(inq)
+            else:
+                _wizard_data_cleanup_all(inq)
+    except KeyboardInterrupt:
+        return
+
+
+def _wizard_data_list(inq) -> None:
+    """列出全局索引里的任务（带语义标题/状态）。"""
+    from app.db.video_task_dao import list_tasks as _list
+
+    tasks = _list()
+    if not tasks:
+        print(f"{_DIM}暂无任务记录（尚未生成过笔记/素材）{_RESET}", file=sys.stdout)
+        _press_any_key()
+        return
+    _show_header("任务列表")
+    for t in tasks:
+        created = (t.get("created_at") or "")[:16]
+        title = (t.get("title") or "（无标题）")[:50]
+        print(f"  {t['task_id'][:8]}  {t.get('status','')[:9]:9}  {created}  {title}", file=sys.stdout)
+    print(f"{_DIM}共 {len(tasks)} 个任务（task_id 显示前 8 位）{_RESET}", file=sys.stdout)
+    _press_any_key()
+
+
+def _wizard_data_cleanup_one(inq) -> None:
+    """选一个任务 → 确认清理（默认保留最终笔记）。"""
+    from app.db.video_task_dao import list_tasks as _list
+    from app.utils.task_manifest import cleanup_task_files, list_task_files
+
+    tasks = _list()
+    if not tasks:
+        print(f"{_DIM}暂无任务记录{_RESET}", file=sys.stdout)
+        _press_any_key()
+        return
+    choices = []
+    for t in tasks:
+        title = (t.get("title") or "（无标题）")[:40]
+        status = t.get("status") or ""
+        choices.append(
+            {"name": f"{t['task_id'][:8]}  [{status[:8]}]  {title}", "value": t["task_id"]}
+        )
+    choices.append({"name": "← 取消", "value": "back"})
+    tid = inq.select(message="选择要清理的任务（← 取消）", choices=choices, keybindings=_KB).execute()
+    if tid == "back":
+        return
+
+    files = list_task_files(tid)
+    print(f"{_DIM}该任务占用：{len(files.get('existing', []))} 个文件/目录{_RESET}", file=sys.stdout)
+    include_note = inq.confirm(
+        message="连最终笔记一起删？[n=保留笔记]",
+        default=False,
+        keybindings=_KB,
+    ).execute()
+    if not inq.confirm(
+        message=f"确认清理任务 {tid[:8]}？{'（连笔记）' if include_note else '（保留笔记）'}",
+        default=False,
+        keybindings=_KB,
+    ).execute():
+        print(f"{_YELLOW}已取消清理{_RESET}", file=sys.stdout)
+        return
+    r = cleanup_task_files(tid, include_note=include_note)
+    print(
+        f"{_GREEN}✓ 已清理：删除 {len(r.get('deleted', []))} 项，"
+        f"笔记{'保留' if r.get('note_kept') else '已删'}{_RESET}",
+        file=sys.stdout,
+    )
+    _press_any_key()
+
+
+def _wizard_data_cleanup_all(inq) -> None:
+    """全局清理（恢复出厂）。"""
+    from app.utils.task_manifest import cleanup_all_files
+
+    _show_header("全局清理")
+    print(
+        f"{_YELLOW}⚠ 将清空 note_results/（所有任务产物）、static/screenshots/、logs/。{_RESET}",
+        file=sys.stdout,
+    )
+    include_config = inq.confirm(message="连 config/（LLM key / cookie）一起清？", default=False, keybindings=_KB).execute()
+    include_models = inq.confirm(message="连 models/（已下载模型）一起清？", default=False, keybindings=_KB).execute()
+    if not inq.confirm(message="确认全局清理？此操作不可撤销", default=False, keybindings=_KB).execute():
+        print(f"{_YELLOW}已取消全局清理{_RESET}", file=sys.stdout)
+        return
+    r = cleanup_all_files(include_config=include_config, include_models=include_models)
+    print(f"{_GREEN}✓ 全局清理完成{_RESET}", file=sys.stdout)
+    _press_any_key()
+
+
+def _press_any_key() -> None:
+    try:
+        input("（按回车返回）", )
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _fallback_test_and_default(pid: str) -> None:
     """纯文本兜底：检测连接 + 选默认模型（镜像 _test_and_set_default）。"""
     provider = ProviderService.get_provider_by_id(pid)
@@ -880,6 +999,36 @@ def _setup_cli_fallback() -> None:
     elif cur_ex:
         remove_app_config("default_export_formats")
         print("   ✓ 已清除导出格式默认（任务成功不再自动导出）", file=sys.stdout)
+
+    print("\n④ 数据管理（查看 / 清理任务产物）：", file=sys.stdout)
+    try:
+        from app.db.video_task_dao import list_tasks as _list_tasks
+
+        tasks = _list_tasks()
+        if not tasks:
+            print("   暂无任务记录（尚未生成过笔记/素材）", file=sys.stdout)
+        else:
+            print(f"   共 {len(tasks)} 个任务：", file=sys.stdout)
+            for i, t in enumerate(tasks, 1):
+                title = (t.get("title") or "（无标题）")[:40]
+                status = (t.get("status") or "")[:9]
+                print(f"     {i}) {t['task_id'][:8]}  [{status}]  {title}", file=sys.stdout)
+            sel = _ask(f"   清理哪个任务？[1-{len(tasks)}，0=跳过]", default="0")
+            if sel.isdigit() and 1 <= int(sel) <= len(tasks):
+                tid = tasks[int(sel) - 1]["task_id"]
+                include_note = _ask(f"   连最终笔记一起删？[y/N]（{tid[:8]}）", default="N").lower() == "y"
+                if _ask(f"   确认清理 {tid[:8]}？[y/N]", default="N").lower() == "y":
+                    from app.utils.task_manifest import cleanup_task_files
+
+                    r = cleanup_task_files(tid, include_note=include_note)
+                    print(f"   ✓ 已清理：删除 {len(r.get('deleted', []))} 项，笔记{'保留' if r.get('note_kept') else '已删'}", file=sys.stdout)
+    except Exception as e:
+        print(f"   ⚠ 读取任务列表失败：{e}", file=sys.stdout)
+    if _ask("   全局清理（清空所有任务产物）？[y/N]", default="N").lower() == "y":
+        from app.utils.task_manifest import cleanup_all_files
+
+        cleanup_all_files()
+        print("   ✓ 已全局清理", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
 
