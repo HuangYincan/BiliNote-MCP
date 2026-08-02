@@ -97,14 +97,23 @@ _task_events: Dict[str, threading.Event] = {}
 
 
 def _write_status(task_id: str, status, message: Optional[str] = None) -> None:
-    """写入 {task_id}.status.json（与上游 NoteGenerator._update_status 兼容）。"""
+    """写入 {task_dir}/status.json（与上游 NoteGenerator._update_status 兼容）。"""
     data = {"status": status.value if isinstance(status, TaskStatus) else str(status)}
     if message:
         data["message"] = message
-    f = NOTE_OUTPUT_DIR / f"{task_id}.status.json"
+    task_dir = NOTE_OUTPUT_DIR / str(task_id)
+    task_dir.mkdir(parents=True, exist_ok=True)
+    f = task_dir / "status.json"
     tmp = f.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(f)
+    # 同步全局索引（尽力而为）
+    try:
+        from app.db.video_task_dao import update_task_status
+
+        update_task_status(str(task_id), data["status"], message=message or "")
+    except Exception:
+        pass
 
 
 def _absolutize_images(markdown: Optional[str]) -> str:
@@ -151,27 +160,26 @@ def _run_note_task(task_id: str, cancel_event: Optional[threading.Event] = None,
                 "transcript": asdict(result.transcript) if result.transcript else None,
                 "audio_meta": asdict(result.audio_meta) if result.audio_meta else None,
             }
-        # 便携笔记 / 指定输出目录：note.md 若写出，返回其所在目录（优先 generate() 返回的真实目录）
-        note_dir = getattr(result, "note_dir", None)
-        if note_dir and (Path(note_dir) / "note.md").exists():
-            payload["note_dir"] = str(note_dir)
-        elif params.get("notes_dir"):
-            note_dir = Path(params["notes_dir"])
-            if (note_dir / "note.md").exists():
-                payload["note_dir"] = str(note_dir)
-        elif "screenshot" in (params.get("_format") or []):
-            note_dir = NOTE_OUTPUT_DIR / task_id
-            if (note_dir / "note.md").exists():
-                payload["note_dir"] = str(note_dir)
-        (NOTE_OUTPUT_DIR / f"{task_id}.json").write_text(
+        # 每任务文件夹统一根；payload 补语义标题（所有任务形态暴露统一 title）
+        task_dir = NOTE_OUTPUT_DIR / task_id
+        if "title" not in payload:
+            payload["title"] = (
+                (result.audio_meta.title if getattr(result, "audio_meta", None) else None)
+                or (material.get("title") if material else None)
+                or ""
+            )
+        # note_dir 统一指向 task_dir（note.md 恒在 gen/note.md，见 note.py）
+        payload["note_dir"] = str(task_dir)
+        # result.json 写进任务文件夹（替代扁平 {task_id}.json）
+        (task_dir / "result.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
-        # 记录结果/状态 JSON 与下载目录到 manifest（尽力而为，失败不阻断）
+        # 记录结果/状态/任务夹到 manifest（尽力而为，失败不阻断）
         record_task_paths(task_id, [
-            NOTE_OUTPUT_DIR / f"{task_id}.json",
-            NOTE_OUTPUT_DIR / f"{task_id}.status.json",
-            NOTE_OUTPUT_DIR / f"dl_{task_id}",
+            task_dir,
+            task_dir / "result.json",
+            task_dir / "status.json",
         ])
         # 按「导出格式默认」自动导出纯格式（srt/vtt/json，确定性渲染）——尽力而为，失败不阻断
         _auto_export_transcript(task_id, payload.get("transcript"))
@@ -204,7 +212,7 @@ def _auto_export_transcript(task_id: str, transcript) -> None:
         export_transcript(
             transcript,
             formats=default_formats,
-            out_dir=NOTE_OUTPUT_DIR / task_id,
+            out_dir=NOTE_OUTPUT_DIR / task_id / "gen",
             task_id=task_id,
         )
     except Exception as exc:
@@ -244,14 +252,17 @@ def _run_step_task(
         _check_cancel(cancel_event)  # 排队期间被取消 → 直接 CANCELLED，不写 INITIALIZING
         _write_status(task_id, "INITIALIZING", message="正在准备…")
         payload = step_fn(task_id, cancel_event, **kwargs)
-        (NOTE_OUTPUT_DIR / f"{task_id}.json").write_text(
+        task_dir = NOTE_OUTPUT_DIR / str(task_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        (task_dir / "result.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
         # 记录结果/状态 JSON 到 manifest（尽力而为，失败不阻断）
         record_task_paths(task_id, [
-            NOTE_OUTPUT_DIR / f"{task_id}.json",
-            NOTE_OUTPUT_DIR / f"{task_id}.status.json",
+            task_dir,
+            task_dir / "result.json",
+            task_dir / "status.json",
         ])
         logger.info(f"步骤任务成功 task_id={task_id}")
     except TaskCancelledError:
@@ -572,7 +583,8 @@ def prepare_note_material(
 @mcp.tool()
 def get_task_status(task_id: str) -> str:
     """查询笔记生成任务进度。SUCCESS 时 result 含 markdown / transcript / audio_meta。"""
-    status_file = NOTE_OUTPUT_DIR / f"{task_id}.status.json"
+    task_dir = NOTE_OUTPUT_DIR / str(task_id)
+    status_file = task_dir / "status.json"
     if not status_file.exists():
         return json.dumps(
             {"status": "PENDING", "message": "任务排队中", "task_id": task_id, "result": None},
@@ -585,12 +597,16 @@ def get_task_status(task_id: str) -> str:
 
     status = data.get("status", "PENDING")
     result = None
-    result_file = NOTE_OUTPUT_DIR / f"{task_id}.json"
+    result_file = task_dir / "result.json"
     if status == "SUCCESS" and result_file.exists():
         try:
             result = json.loads(result_file.read_text(encoding="utf-8"))
             if result and result.get("markdown"):
                 result["markdown"] = _absolutize_images(result["markdown"])
+            if result and "title" not in result:
+                # 补语义标题（旧任务 result 可能无 title；从 audio_meta 兜底）
+                am = result.get("audio_meta") or {}
+                result["title"] = am.get("title") or ""
         except Exception as e:
             logger.error(f"读取结果文件失败 task_id={task_id}: {e}")
 
@@ -652,8 +668,20 @@ def cancel_note(task_id: str) -> str:
 
 
 @mcp.tool()
+def list_tasks() -> str:
+    """列出全部任务（全局索引 video_tasks 表），按创建时间倒序。
+
+    返回 [{task_id, title, status, summary, platform, created_at, note_dir}]——
+    Agent 据此枚举任务、按语义标题识别，无需预先知道 task_id。
+    """
+    from app.db.video_task_dao import list_tasks as _list
+
+    return json.dumps(_list(), ensure_ascii=False)
+
+
+@mcp.tool()
 def get_task_files(task_id: str) -> str:
-    """列出某任务在磁盘上生成的相关文件/目录（manifest 记录 + {task_id}* 前缀扫描）。
+    """列出某任务在磁盘上生成的相关文件/目录（manifest 记录 + 任务文件夹扫描）。
 
     返回 {task_id, manifest_paths, existing}，existing 是真实存在的文件/目录列表。
     清理前先用它查看该任务占了哪些存储。
@@ -809,7 +837,7 @@ def extract_frames(
         video_path=str(p),
         video_interval=int(video_interval) or 6,
         grid_size=grid_size,
-        save_dir=str(NOTE_OUTPUT_DIR / task_id / "frames"),
+        save_dir=str(NOTE_OUTPUT_DIR / task_id / "gen" / "frames"),
     )
     cancel_event = threading.Event()
     future = _pool.submit(_run_step_task, task_id, cancel_event, step_fn=_step_extract_frames, **params)
@@ -1194,7 +1222,8 @@ def export_transcript(
     """
     from bilinote_mcp.export import export_transcript as _export
 
-    result_json = Path(NOTE_OUTPUT_DIR / f"{task_id}.json")
+    task_dir = NOTE_OUTPUT_DIR / str(task_id)
+    result_json = task_dir / "result.json"
     transcript = None
     if result_json.exists():
         try:
@@ -1202,8 +1231,8 @@ def export_transcript(
         except Exception:
             transcript = None
     if transcript is None:
-        # fallback：{task_id}_transcript.json 缓存
-        cache = Path(NOTE_OUTPUT_DIR / f"{task_id}_transcript.json")
+        # fallback：{task_dir}/gen/transcript.json 缓存
+        cache = task_dir / "gen" / "transcript.json"
         if cache.exists():
             try:
                 transcript = json.loads(cache.read_text(encoding="utf-8"))
@@ -1220,7 +1249,7 @@ def export_transcript(
 
         formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
 
-    out = out_dir or str(NOTE_OUTPUT_DIR / task_id)
+    out = out_dir or str(task_dir / "gen")
     written = _export(transcript, formats=formats, out_dir=out, task_id=task_id)
     return json.dumps(
         {"task_id": task_id, "formats": written, "errors": {}},
