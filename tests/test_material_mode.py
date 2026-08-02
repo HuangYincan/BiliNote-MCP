@@ -105,7 +105,7 @@ def test_build_note_material_persists_frames():
     assert material["transcript"]["full_text"] == "你好世界"
     assert material["transcript"]["segments"][0]["text"] == "你好世界"
 
-    frames_dir = NOTE_OUTPUT_DIR / task_id / "frames"
+    frames_dir = NOTE_OUTPUT_DIR / task_id / "gen" / "frames"
     frame_file = frames_dir / "frame_1.jpg"
     assert frame_file.exists(), f"帧文件应落盘: {frame_file}"
     assert frame_file.read_bytes() == fake_bytes
@@ -160,7 +160,7 @@ def test_run_note_task_writes_material_payload():
         m_gen.return_value.generate.return_value = note_result
         server._run_note_task(task_id, None)
 
-    out_file = server.NOTE_OUTPUT_DIR / f"{task_id}.json"
+    out_file = server.NOTE_OUTPUT_DIR / task_id / "result.json"
     assert out_file.exists(), f"结果文件应落盘: {out_file}"
     data = json.loads(out_file.read_text(encoding="utf-8"))
     assert data["kind"] == "material"
@@ -170,8 +170,9 @@ def test_run_note_task_writes_material_payload():
     assert data["comments_danmaku"] == "【弹幕】测试"
     assert data["video_path"] == "/tmp/fake_video.mp4"
     assert data["audio_path"] == "/tmp/fake_audio.mp3"
-    out_file.unlink(missing_ok=True)
-    (server.NOTE_OUTPUT_DIR / f"{task_id}.status.json").unlink(missing_ok=True)
+    import shutil as _sh
+
+    _sh.rmtree(server.NOTE_OUTPUT_DIR / task_id, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,108 @@
+"""全局任务索引（video_tasks 表 + DAO）单元测试。
+
+不碰真实数据库 —— 用隔离 SQLite 文件。
+
+覆盖：
+1. init_db 幂等迁移：旧 schema（无新列）经 init_db 后补齐 title/status/summary/note_dir；
+2. insert upsert：同 task_id 再插更新标题、不抛错；
+3. update_task_status：更新状态；
+4. list_tasks：返回带 title/status/summary/created_at；
+5. delete_task：删除单条。
+"""
+import os
+import sqlite3
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+_DB = "/tmp/bilinote_test_task_index.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{_DB}"
+
+from app.db.init_db import init_db  # noqa: E402
+from app.db.video_task_dao import (  # noqa: E402
+    delete_task,
+    get_task_by_video,
+    insert_video_task,
+    list_tasks,
+    update_task_status,
+)
+
+# engine 是模块级单例且缓存连接池：测试期间 DB 文件不能删（否则连接变只读）。
+# 用「只建不删 + 唯一 task_id」策略，测试互不污染。
+_tick = 0
+
+
+def _tid():
+    global _tick
+    _tick += 1
+    return f"t{_tick}"
+
+
+class MigrationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def test_init_db_creates_columns(self):
+        # 表已存在且带新列（引擎模块级单例建表）
+        conn = sqlite3.connect(_DB)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(video_tasks)")}
+        conn.close()
+        self.assertTrue({"title", "status", "summary", "note_dir"} <= cols)
+
+    def test_init_db_idempotent(self):
+        # 已有新列再跑 init_db 不报错
+        init_db()
+
+
+class DaoTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def test_insert_and_list_with_metadata(self):
+        tid1, tid2 = _tid(), _tid()
+        insert_video_task(
+            "BV1", "bilibili", tid1,
+            title="机器学习", status="SUCCESS", summary="讲监督学习", note_dir="/x/" + tid1,
+        )
+        insert_video_task("BV2", "bilibili", tid2, title="深度学习", status="FAILED")
+        tasks = list_tasks()
+        by_id = {t["task_id"]: t for t in tasks}
+        self.assertEqual(by_id[tid1]["title"], "机器学习")
+        self.assertEqual(by_id[tid1]["status"], "SUCCESS")
+        self.assertEqual(by_id[tid1]["note_dir"], "/x/" + tid1)
+        self.assertEqual(by_id[tid2]["status"], "FAILED")
+
+    def test_insert_upsert_updates_title(self):
+        tid = _tid()
+        insert_video_task("BV1", "bilibili", tid, title="旧标题")
+        insert_video_task("BV1", "bilibili", tid, title="新标题")
+        tasks = list_tasks()
+        by_id = {t["task_id"]: t for t in tasks}
+        self.assertEqual(by_id[tid]["title"], "新标题")
+
+    def test_update_task_status(self):
+        tid = _tid()
+        insert_video_task("BV1", "bilibili", tid, title="测试")
+        update_task_status(tid, "SUCCESS")
+        tasks = list_tasks()
+        by_id = {t["task_id"]: t for t in tasks}
+        self.assertEqual(by_id[tid]["status"], "SUCCESS")
+
+    def test_get_task_by_video(self):
+        tid = _tid()
+        insert_video_task("BV1", "bilibili", tid)
+        self.assertEqual(get_task_by_video("BV1", "bilibili"), tid)
+
+    def test_delete_task(self):
+        tid = _tid()
+        insert_video_task("BV1", "bilibili", tid)
+        delete_task(tid)
+        self.assertNotIn(tid, [t["task_id"] for t in list_tasks()])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

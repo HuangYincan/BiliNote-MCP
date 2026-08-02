@@ -15,11 +15,16 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 数据层重构：cleanup_all_files 会同步清空 video_tasks 全局索引 → 用隔离 DB
+os.environ["DATABASE_URL"] = "sqlite:////tmp/bilinote_test_task_manifest.db"
+
 from app.utils.task_manifest import (  # noqa: E402
     cleanup_all_files,
     cleanup_task_files,
+    get_task_meta,
     get_task_paths,
     list_task_files,
+    record_task_meta,
     record_task_paths,
 )
 
@@ -55,51 +60,59 @@ class TaskManifestTest(unittest.TestCase):
     # ---------- 造假 task 产物 ----------
 
     def _make_task(self, task_id: str) -> Path:
-        """造一个假 task：中间文件 + dl 目录 + 便携笔记目录（note.md + Assets）。"""
-        (self.note_dir / f"{task_id}_audio.json").write_text("{}", encoding="utf-8")
-        (self.note_dir / f"{task_id}_transcript.json").write_text("{}", encoding="utf-8")
-        (self.note_dir / f"{task_id}_markdown.md").write_text("# 缓存", encoding="utf-8")
-        (self.note_dir / f"{task_id}.status.json").write_text(
-            '{"status":"SUCCESS"}', encoding="utf-8"
-        )
-        (self.note_dir / f"{task_id}.json").write_text(
-            '{"markdown":"# 最终"}', encoding="utf-8"
-        )
-        dl = self.note_dir / f"dl_{task_id}"
-        dl.mkdir(exist_ok=True)
-        (dl / "video.mp4").write_bytes(b"x")
-        note_dir = self.note_dir / task_id
-        note_dir.mkdir(exist_ok=True)
-        (note_dir / "note.md").write_text("# 最终笔记", encoding="utf-8")
-        assets = note_dir / "Assets"
-        assets.mkdir(exist_ok=True)
+        """造假 task（新结构）：task_dir/raw + gen（note.md/Assets/frames）+ status/result/manifest。"""
+        task_dir = self.note_dir / task_id
+        raw = task_dir / "raw"
+        gen = task_dir / "gen"
+        raw.mkdir(parents=True, exist_ok=True)
+        gen.mkdir(parents=True, exist_ok=True)
+        (raw / "video.mp4").write_bytes(b"x")
+        (gen / "transcript.json").write_text("{}", encoding="utf-8")
+        (gen / "note.md").write_text("# 最终笔记", encoding="utf-8")
+        assets = gen / "Assets"
+        assets.mkdir(parents=True, exist_ok=True)
         (assets / "1.jpg").write_bytes(b"y")
+        frames = gen / "frames"
+        frames.mkdir(parents=True, exist_ok=True)
+        (frames / "f1.jpg").write_bytes(b"f")
+        (task_dir / "status.json").write_text('{"status":"SUCCESS"}', encoding="utf-8")
+        (task_dir / "result.json").write_text('{"markdown":"# 最终"}', encoding="utf-8")
         record_task_paths(
             task_id,
             [
-                self.note_dir / f"{task_id}_audio.json",
-                self.note_dir / f"{task_id}_transcript.json",
-                self.note_dir / f"{task_id}_markdown.md",
-                self.note_dir / f"{task_id}.status.json",
-                self.note_dir / f"{task_id}.json",
-                dl,
-                note_dir,
-                note_dir / "note.md",
+                task_dir,
+                raw,
+                gen,
+                gen / "transcript.json",
+                gen / "note.md",
+                task_dir / "status.json",
+                task_dir / "result.json",
             ],
         )
-        return note_dir
+        record_task_meta(task_id, {"title": "测试笔记"})
+        return task_dir
 
     # ---------- manifest 记录 / 读取 ----------
 
     def test_record_and_get_dedup(self):
         tid = "abc123"
-        record_task_paths(tid, [str(self.note_dir / f"{tid}_a.json"), str(self.note_dir / f"{tid}_b.json")])
-        record_task_paths(tid, [str(self.note_dir / f"{tid}_b.json"), str(self.note_dir / f"{tid}_c.json")])
+        td = self.note_dir / tid
+        record_task_paths(tid, [str(td / "a.json"), str(td / "b.json")])
+        record_task_paths(tid, [str(td / "b.json"), str(td / "c.json")])
         paths = get_task_paths(tid)
         self.assertEqual(len(paths), 3)
-        self.assertIn(str(self.note_dir / f"{tid}_a.json"), paths)
-        self.assertIn(str(self.note_dir / f"{tid}_b.json"), paths)
-        self.assertIn(str(self.note_dir / f"{tid}_c.json"), paths)
+        self.assertIn(str(td / "a.json"), paths)
+        self.assertIn(str(td / "b.json"), paths)
+        self.assertIn(str(td / "c.json"), paths)
+        # manifest 落在任务文件夹内
+        self.assertTrue((td / "manifest.json").exists())
+
+    def test_record_meta_preserved(self):
+        tid = "meta01"
+        record_task_paths(tid, [str(self.note_dir / tid / "x.json")])
+        record_task_meta(tid, {"title": "标题A"})
+        record_task_paths(tid, [str(self.note_dir / tid / "y.json")])  # 再次记路径，meta 不丢
+        self.assertEqual(get_task_meta(tid).get("title"), "标题A")
 
     def test_get_task_paths_missing(self):
         self.assertEqual(get_task_paths("nope"), [])
@@ -112,46 +125,47 @@ class TaskManifestTest(unittest.TestCase):
 
     def test_list_task_files(self):
         tid = "task01"
-        note_dir = self._make_task(tid)
+        task_dir = self._make_task(tid)
         info = list_task_files(tid)
         self.assertEqual(info["task_id"], tid)
         # manifest 记录的路径都在 existing 里（去重后）
         for p in get_task_paths(tid):
             self.assertIn(str(Path(p)), info["existing"])
-        # 前缀模式扫描到 dl 目录与最终笔记
-        self.assertTrue(any("dl_" in s for s in info["existing"]))
+        # 任务文件夹 / raw / gen 与最终笔记都在
+        self.assertTrue(any("raw" == Path(s).name for s in info["existing"]))
         self.assertTrue(any(s.endswith("note.md") for s in info["existing"]))
-        self.assertTrue(note_dir.exists())
+        self.assertTrue(task_dir.exists())
+        # meta 透出
+        self.assertEqual(info["meta"].get("title"), "测试笔记")
 
     # ---------- cleanup_note ----------
 
     def test_cleanup_note_keeps_note(self):
         tid = "task02"
-        note_dir = self._make_task(tid)
+        task_dir = self._make_task(tid)
+        gen = task_dir / "gen"
+        raw = task_dir / "raw"
         res = cleanup_task_files(tid, include_note=False)
-        # 中间产物被删
-        self.assertFalse((self.note_dir / f"{tid}_audio.json").exists())
-        self.assertFalse((self.note_dir / f"{tid}_transcript.json").exists())
-        self.assertFalse((self.note_dir / f"{tid}_markdown.md").exists())
-        self.assertFalse((self.note_dir / f"{tid}.json").exists())
-        self.assertFalse((self.note_dir / f"dl_{tid}").exists())
-        # 截图 Assets 被删
-        self.assertFalse((note_dir / "Assets").exists())
+        # raw 整个被删
+        self.assertFalse(raw.exists())
+        # gen 内非 note.md 被删（transcript/Assets/frames）
+        self.assertFalse((gen / "transcript.json").exists())
+        self.assertFalse((gen / "Assets").exists())
+        self.assertFalse((gen / "frames").exists())
         # 最终笔记保留
-        self.assertTrue((note_dir / "note.md").exists())
+        self.assertTrue((gen / "note.md").exists())
         self.assertTrue(res["note_kept"])
-        # include_note=False 时 manifest 保留（后续还能查/整删）
-        self.assertTrue((self.note_dir / f"{tid}.manifest.json").exists())
+        # 控制文件保留（status/manifest/result）
+        self.assertTrue((task_dir / "status.json").exists())
+        self.assertTrue((task_dir / "manifest.json").exists())
+        self.assertTrue((task_dir / "result.json").exists())
 
     def test_cleanup_note_include_note(self):
         tid = "task03"
-        note_dir = self._make_task(tid)
+        task_dir = self._make_task(tid)
         res = cleanup_task_files(tid, include_note=True)
-        # 连最终笔记 + manifest 一起删
-        self.assertFalse(note_dir.exists())
-        self.assertFalse((self.note_dir / f"{tid}.manifest.json").exists())
-        self.assertFalse((self.note_dir / f"dl_{tid}").exists())
-        self.assertFalse((self.note_dir / f"{tid}_audio.json").exists())
+        # 连最终笔记 + 整个任务文件夹一起删
+        self.assertFalse(task_dir.exists())
         self.assertFalse(res["note_kept"])
 
     # ---------- 路径穿越防护 ----------
@@ -169,8 +183,7 @@ class TaskManifestTest(unittest.TestCase):
         self.assertNotIn(str(outside), res["deleted"])
         self.assertNotIn(str(outside), res["errors"])
         # 数据目录内的正常产物照常被删
-        self.assertFalse((self.note_dir / f"{tid}_audio.json").exists())
-        self.assertFalse((self.note_dir / f"dl_{tid}").exists())
+        self.assertFalse((self.note_dir / tid).exists())
         outside.unlink(missing_ok=True)
 
     # ---------- cleanup_all ----------
