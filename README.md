@@ -68,6 +68,32 @@ videonote setup
 
 ---
 
+## 🎬 真实案例
+
+两个端到端真实案例：一个走 **AGENT 直接生成**并输出 LaTeX mathnote PDF，一个走 **全自动 LLM 生成**产出便携 Markdown。
+
+### 案例一 · agent_direct + LaTeX mathnote（DeepSeek-V4 视频）
+
+一条视频 + 四类外部资料（论文 / 技术报告 / 公众号官宣 / 开源集合）→ **AGENT 直接生成**精修笔记，并输出 **LaTeX mathnote PDF**（中文楷体模板）：
+
+| Page1 | Page2 | Page3 |
+| :---: | :---: | :---: |
+| <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page1.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page2.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page3.jpg"> |
+
+亮点：**agent_direct 全流程**（无 LLM key，Agent 读转写 + 帧图 + 评论自写笔记）· **多源交叉整合**（视频 × 论文 × 技术报告 × 开源清单）· **精修保留原稿**（`note.md` / `note_original.md` 双份）· **LaTeX mathnote PDF**（自适应修复字体缺失 / 断行溢出 / 引用去重）。完整过程记录见 [`examples/agent-direct-deepseek-v4-mathnote/README.md`](examples/agent-direct-deepseek-v4-mathnote/README.md)。
+
+### 案例二 · 全自动 LLM 生成 + 便携 Markdown（三视频）
+
+极简 Prompt（3 个 B 站链接 + 输出目录，一个参数都没说明）→ **全自动**跑完 环境检查 → 链接识别 → 供应商/模型发现 → 参数确认 → 多视频并行 → 生成后基于字幕精修，产出 3 份**精修便携笔记**（`note.md` + `Assets/` 截图 + 「观众观点」章节，并保留 `note_original.md` 供对比）。
+
+- **雅思**（BV1c54y187SH）：破误区 + 听/读/写/口语四科拆解 + 179 高频考点词 + 15 句逻辑框架
+- **法医**（BV1QEgZ6rEGj）：从业 43 年法医「拉片」对比影视与现实，精修扩为 12 节
+- **Transformer**（BV1r8nMz4EAj）：自注意力机制详解，18 张截图按讲课时间线分布
+
+完整过程记录见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
+
+---
+
 ## 🗺️ 流水线地图
 
 ```mermaid

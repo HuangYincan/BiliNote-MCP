@@ -65,6 +65,32 @@ Full installation / configuration / usage / env vars / updating / security docs 
 
 ---
 
+## 🎬 Real-world Examples
+
+Two end-to-end examples: one runs **AGENT direct generation** and outputs a **LaTeX mathnote PDF**; the other runs **fully automatic LLM generation** and produces portable Markdown.
+
+### Example 1 · agent_direct + LaTeX mathnote (DeepSeek-V4 video)
+
+One video + four kinds of external sources (paper / tech report / WeChat announcement / open-source collections) → **AGENT direct generation** of a refined note, output as a **LaTeX mathnote PDF** (Chinese KaiTi template):
+
+| Page1 | Page2 | Page3 |
+| :---: | :---: | :---: |
+| <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page1.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page2.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page3.jpg"> |
+
+Highlights: **full agent_direct flow** (no LLM key — the Agent writes the note from transcript + frames + comments) · **multi-source cross-integration** (video × paper × tech report × open-source list) · **refined copy keeps the original** (`note.md` / `note_original.md` pair) · **LaTeX mathnote PDF** (auto-fixes missing fonts / line-overflow / citation dedup). Full run record: [`examples/agent-direct-deepseek-v4-mathnote/README.md`](examples/agent-direct-deepseek-v4-mathnote/README.md).
+
+### Example 2 · Fully automatic LLM generation + portable Markdown (three videos)
+
+A minimal prompt (3 Bilibili links + an output dir, not a single parameter given) → **fully automatic** run of  env check → link detection → provider/model discovery → parameter confirmation → multi-video parallel → post-generation refinement from the transcript, producing 3 **portable refined notes** (`note.md` + `Assets/` screenshots + a "Viewer Opinions" section, keeping `note_original.md` for comparison).
+
+- **IELTS** (BV1c54y187SH): myth-busting + listening/reading/writing/speaking breakdown + 179 high-frequency exam words + 15-sentence logic framework
+- **Forensics** (BV1QEgZ6rEGj): a 43-year forensic pathologist "reacts" to film vs. reality; refined into 12 sections
+- **Transformer** (BV1r8nMz4EAj): self-attention deep dive, 18 screenshots distributed along the lecture timeline
+
+Full run record: [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md).
+
+---
+
 ## 🗺️ Pipeline Map
 
 ```mermaid
