@@ -33,3 +33,10 @@ dist/
 .claude/settings.local.json
 # 项目 CLAUDE.md（本机开发上下文，不提交）
 /CLAUDE.md
+
+# LaTeX 编译产物（模板预览 main.pdf 除外，需入库）
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz

@@ -2,6 +2,13 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-04 · LaTeX 模板换源：去除 RUC 水印）
+
+- **LaTeX 导出模板更换**：内置模板从 4 个单文件风格（academic / lecture / meeting_minutes / minimal）换成 [Gua927/Latex_Template](https://github.com/Gua927/Latex_Template) 的两个子目录 —— `Math Note/`（数学/理工科笔记，`\documentclass{MathNote}`，中文版 `MathNoteCN`，含定理/引理/定义/推论/例题/命题/证明/注记环境）与 `English Article/`（英文文稿/演讲大纲，`\documentclass{article}` + 摘要/章节/多级列表/参考文献）。
+- **去除 RUC 校徽水印**：删除两模板中 `\usepackage{background}` + `\backgroundsetup{...logo-RUC.png}` 的整页背景水印（`MathNote.cls` / `MathNoteCN.cls` / `English Article/main.tex`），并删除 `logo-RUC.png`；重编译 `main.pdf`、重新生成 README 预览图（image.png / image-1.png），产物均无水印。
+- **LPPL-1.3c 合规**：模板头部加"改编自上游 + 修改说明"注释；新增 `templates/latex/NOTICE.md`（来源/修改内容/许可义务/变更日志）与 `LICENSE-LPPL-1.3c.txt`（许可原文）；模板 README 注明改编来源、修改点与上游链接，并声明由 VideoNote-MCP 维护、与上游作者无关。
+- **文档同步**：`output-formats.md` LaTeX 章节改写为两模板流程（含 Math Note 需随带 `.cls`、连续编译两遍的说明）；README / README_EN / docs/04 模板名引用更新为 Math Note / English Article；CHANGELOG 记录。
+
 ## 维护（2026-08-04 · 发布 v0.1.2）
 
 v0.1.1 → v0.1.2 的主要变更（详见下方各「维护」节点块；稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.2 videonote`）：
