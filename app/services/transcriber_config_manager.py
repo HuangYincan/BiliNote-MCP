@@ -8,9 +8,9 @@ class TranscriberConfigManager:
     """管理转写器配置，存储在 JSON 文件中，支持前端动态修改。"""
 
     def __init__(self, filepath: str = None):
-        # 默认落在 BILINOTE_CONFIG_DIR（由 bilinote_mcp.config 设置），避免依赖 CWD
+        # 默认落在 VIDEONOTE_CONFIG_DIR（由 videonote_mcp.config 设置），避免依赖 CWD
         if filepath is None:
-            filepath = str(Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "transcriber.json")
+            filepath = str(Path(os.environ.get("VIDEONOTE_CONFIG_DIR", "config")) / "transcriber.json")
         self.path = Path(filepath)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -44,18 +44,37 @@ class TranscriberConfigManager:
                 "whisper_model_size",
                 os.getenv("WHISPER_MODEL_SIZE", "tiny"),
             ),
+            "enable_preprocess": bool(
+                data.get(
+                    "enable_preprocess",
+                    os.getenv("VIDEONOTE_ENABLE_PREPROCESS", "0") in ("1", "true", "True"),
+                )
+            ),
+            "diarization": bool(
+                data.get("diarization", os.getenv("VIDEONOTE_DIARIZATION", "0") in ("1", "true", "True"))
+            ),
+            "diarization_speakers": data.get("diarization_speakers"),
         }
 
     def update_config(
         self,
         transcriber_type: str,
         whisper_model_size: Optional[str] = None,
+        enable_preprocess: Optional[bool] = None,
+        diarization: Optional[bool] = None,
+        diarization_speakers: Optional[int] = None,
     ) -> Dict[str, Any]:
         """更新转写器配置并持久化。"""
         data = self._read()
         data["transcriber_type"] = transcriber_type
         if whisper_model_size is not None:
             data["whisper_model_size"] = whisper_model_size
+        if enable_preprocess is not None:
+            data["enable_preprocess"] = bool(enable_preprocess)
+        if diarization is not None:
+            data["diarization"] = bool(diarization)
+        if diarization_speakers is not None:
+            data["diarization_speakers"] = int(diarization_speakers)
         self._write(data)
         return self.get_config()
 
@@ -64,6 +83,12 @@ class TranscriberConfigManager:
 
     def get_whisper_model_size(self) -> str:
         return self.get_config()["whisper_model_size"]
+
+    def get_enable_preprocess(self) -> bool:
+        return bool(self.get_config()["enable_preprocess"])
+
+    def get_diarization(self) -> bool:
+        return bool(self.get_config()["diarization"])
 
     def is_model_ready(self) -> Dict[str, Any]:
         """当前转写器是否就绪可用。
@@ -84,11 +109,22 @@ class TranscriberConfigManager:
             "downloading": False,
             "reason": "",
         }
-        if ttype not in ("fast-whisper", "mlx-whisper"):
+        if ttype not in ("fast-whisper", "mlx-whisper", "funasr"):
             return result  # 在线引擎无需本地模型
 
         # 先确认运行环境装了对应包（模型文件在 ≠ 引擎能 import；如 mlx_whisper 是可选依赖）
         import importlib.util
+
+        if ttype == "funasr":
+            if importlib.util.find_spec("funasr") is None:
+                result["ready"] = False
+                result["reason"] = (
+                    "funasr 不可用：未安装 funasr 包。请用 "
+                    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with funasr --with torch`"
+                    "（或 `uvx --from ... --with funasr --with torch`）安装；或切换转写引擎 `videonote transcriber set groq` / fast-whisper"
+                )
+                return result
+            return result  # funasr 模型由引擎首次构造时自动下载，无需预检模型文件
 
         pkg = "mlx_whisper" if ttype == "mlx-whisper" else "faster_whisper"
         if importlib.util.find_spec(pkg) is None:
@@ -96,8 +132,8 @@ class TranscriberConfigManager:
             if ttype == "mlx-whisper":
                 result["reason"] = (
                     f"{ttype} 不可用：未安装 mlx_whisper 包。请用 "
-                    "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
-                    "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                    "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with mlx-whisper`"
+                    "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `videonote transcriber set groq` / fast-whisper"
                 )
             else:
                 result["reason"] = f"{ttype} 不可用：未安装 {pkg} 包"
@@ -131,7 +167,7 @@ class TranscriberConfigManager:
             + (
                 "，正在下载中，请稍候"
                 if downloading
-                else f"，请先执行 `bilinote-mcp transcriber download {size}` 下载"
+                else f"，请先执行 `videonote transcriber download {size}` 下载"
             )
         )
         return result

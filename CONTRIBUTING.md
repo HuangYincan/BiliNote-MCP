@@ -21,18 +21,18 @@
 
 ```bash
 uv sync --no-dev --frozen   # 安装依赖（含本项目）
-uv run bilinote-mcp setup   # 配置 LLM / 转写
+uv run videonote setup   # 配置 LLM / 转写
 ```
 
 ## 冒烟测试（CI）
 
 ```bash
-uv run python -c "import bilinote_mcp.server; print('import OK')"
+uv run python -c "import videonote_mcp.server; print('import OK')"
 # MCP tools/list over stdio（脚本见 .github/workflows/ci.yml）
 ```
 
 ## 提交前自查
 
 - `uv sync --frozen` 能过（锁文件与依赖一致）
-- `import bilinote_mcp.server` 不报错
-- `uv run bilinote-mcp providers list` 正常输出
+- `import videonote_mcp.server` 不报错
+- `uv run videonote providers list` 正常输出

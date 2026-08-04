@@ -3,8 +3,8 @@ import os
 import sys
 from pathlib import Path
 
-# 日志目录：落在 BILINOTE_DATA_DIR/logs（由 bilinote_mcp.config 设置），避免依赖 CWD
-LOG_DIR = Path(os.environ.get("BILINOTE_DATA_DIR", ".")) / "logs"
+# 日志目录：落在 VIDEONOTE_DATA_DIR/logs（由 videonote_mcp.config 设置），避免依赖 CWD
+LOG_DIR = Path(os.environ.get("VIDEONOTE_DATA_DIR", ".")) / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # 日志格式

@@ -35,7 +35,7 @@
 3. **`app/services/note.py`** — 删除未使用的 `from fastapi import HTTPException` 导入。
 4. **`app/services/transcriber_config_manager.py`** — 把对 `app.routers.config` 的延迟 import 改为 `app.utils.model_status`；新增 **`app/utils/model_status.py`**（从 `routers/config.py` 抽取 `_check_whisper_model_exists` / `_check_mlx_whisper_model_exists` 两个纯函数，并补上「是否下载中」的查询）。
 5. **`app/downloaders/local_downloader.py`** — 封面提取改为**非致命**（try/except 跳过）：上游对纯音频文件（mp3/wav）会因无法抽帧直接使任务失败，本仓库允许跳过封面继续生成笔记。
-6. **`app/services/cookie_manager.py` / `app/services/transcriber_config_manager.py`** — 配置文件默认路径改为 `BILINOTE_CONFIG_DIR`（见 `bilinote_mcp/config.py`），避免依赖 CWD。
+6. **`app/services/cookie_manager.py` / `app/services/transcriber_config_manager.py`** — 配置文件默认路径改为 `VIDEONOTE_CONFIG_DIR`（见 `videonote_mcp/config.py`），避免依赖 CWD。
 5. **未移植** 的模块：`routers/`、`main.py`、`utils/response.py`、`utils/export.py`、`utils/ppt_generator.py`、`utils/minio_client.py`、`services/chat_*`、`services/vector_store.py`、`services/model.py`、`services/model_fallback.py`、`exceptions/exception_handlers.py` —— 均确认仅 Web 层（routers/main）使用，核心流水线不依赖。
 
 ## 如何同步上游更新

@@ -1,0 +1,50 @@
+%% style: lecture
+%% desc: 讲义/课堂笔记风 —— 面向学习：目标先行、分节讲解、重点框、练习提示
+%% 用法：AGENT 读此模板，以 MD 底稿为信息源、按此结构生成 note.tex（不直接替换占位符）。
+%% 占位符 %%TITLE%% / %%CONTENT%% 标出内容插入点。
+\documentclass[11pt]{article}
+\usepackage[UTF8, scheme=plain]{ctex}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+
+\title{\textbf{讲义：%%TITLE%%}}
+\author{AI 笔记}
+\date{\today}
+
+\newtcolorbox{keypoint}{colback=blue!5!white, colframe=blue!60!black, title=重点}
+\newtcolorbox{note}{colback=yellow!10!white, colframe=orange!70!black, title=注意}
+
+\begin{document}
+\maketitle
+
+\section{学习目标}
+%% 用 3-5 条列出本讲完成后应掌握的内容
+
+\section{背景与引入}
+%% 为什么讲这个：问题/场景/动机（从底稿开头提炼）
+
+\section{主体内容}
+%% 按底稿顺序分节 \subsection{}，逐步展开：
+% - 概念先定义（\emph{}）
+% - 再给例子（\begin{example} 或列表）
+% - 关键点放 keypoint 框
+
+\begin{keypoint}
+%% 每节的要点浓缩
+\end{keypoint}
+
+\begin{note}
+%% 易错点/陷阱/需注意处
+\end{note}
+
+\section{小结}
+%% 用「学了什么」清单式总结
+
+\section{思考练习}
+%% 1-3 道基于内容的思考题（从底稿可回答）
+
+\end{document}

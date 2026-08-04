@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "bilinote": {
+    "videonote": {
       "command": "uv",
-      "args": ["run", "bilinote-mcp"]
+      "args": ["run", "videonote"]
     }
   }
 }

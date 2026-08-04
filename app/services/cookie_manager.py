@@ -6,9 +6,9 @@ from typing import Optional, Dict
 
 class CookieConfigManager:
     def __init__(self, filepath: str = None):
-        # 默认落在 BILINOTE_CONFIG_DIR（由 bilinote_mcp.config 设置），避免依赖 CWD
+        # 默认落在 VIDEONOTE_CONFIG_DIR（由 videonote_mcp.config 设置），避免依赖 CWD
         if filepath is None:
-            filepath = str(Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "downloader.json")
+            filepath = str(Path(os.environ.get("VIDEONOTE_CONFIG_DIR", "config")) / "downloader.json")
         self.path = Path(filepath)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():

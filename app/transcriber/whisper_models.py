@@ -65,10 +65,10 @@ class WhisperModelRegistry:
     """内置 + 用户自定义的 whisper 模型映射，自定义部分持久化到 JSON。"""
 
     def __init__(self, filepath: Optional[str] = None):
-        # 默认落在 BILINOTE_CONFIG_DIR（setup_environment 设置），避免 CWD 相对路径
+        # 默认落在 VIDEONOTE_CONFIG_DIR（setup_environment 设置），避免 CWD 相对路径
         # 在任意 CWD 里冒出空的 config/ 文件夹
         if filepath is None:
-            filepath = str(Path(os.environ.get("BILINOTE_CONFIG_DIR", "config")) / "whisper_models.json")
+            filepath = str(Path(os.environ.get("VIDEONOTE_CONFIG_DIR", "config")) / "whisper_models.json")
         self.path = Path(filepath)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 

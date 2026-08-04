@@ -212,7 +212,8 @@ class DouyinDownloader(Downloader):
             video_url: str,
             output_dir: Union[str, None] = None,
             quality: DownloadQuality = "fast",
-            need_video: Optional[bool] = False
+            need_video: Optional[bool] = False,
+            skip_download: bool = False,
     ) -> AudioDownloadResult:
         try:
             print(
@@ -224,34 +225,45 @@ class DouyinDownloader(Downloader):
                 output_dir = self.cache_data
             os.makedirs(output_dir, exist_ok=True)
 
-            output_path = os.path.join(output_dir, "%(id)s.%(ext)s")
-
             video_data = self.fetch_video_info(video_url)
-            output_path = output_path % {
-                "id": video_data['aweme_detail']['aweme_id'],
-                "ext": "mp3",
-            }
-            url = video_data['aweme_detail']['music']['play_url']['uri']
-            # 下载音频
-            audio_data = requests.get(url)
-            with open(output_path, 'wb') as f:
-                f.write(audio_data.content)
-            print(url)
-            tags = []
-            for tag in video_data['aweme_detail']['video_tag']:
-                if tag['tag_name']:
-                    tags.append(tag['tag_name'])
+            detail = video_data.get('aweme_detail') or {}
+            aweme_id = detail.get('aweme_id') or ''
+            title = detail.get('item_title') or '抖音视频'
+            duration = (detail.get('video') or {}).get('duration', 0)
+            tags = [t.get('tag_name') for t in (detail.get('video_tag') or []) if t.get('tag_name')]
+
+            output_path = os.path.join(output_dir, f"{aweme_id}.mp3")
+
+            if not skip_download:
+                # play_url 的 uri 是播放键不是完整 URL；用 url_list[0] 兜底 uri
+                music = (detail.get('music') or {}).get('play_url') or {}
+                url = (music.get('url_list') or [None])[0] or music.get('uri')
+                if not url:
+                    raise RuntimeError("抖音接口未返回音频播放地址")
+                audio_data = requests.get(url, headers=DouyinConfig.HEADERS, timeout=30)
+                audio_data.raise_for_status()
+                with open(output_path, 'wb') as f:
+                    f.write(audio_data.content)
+
+            # 封面：优先 cover_original_scale → cover → dynamic_cover；
+            # 旧代码的 else 分支引用了不存在的顶层 video_data['video']，会 KeyError
+            video_info = detail.get('video') or {}
+            cover_url = ""
+            for key in ("cover_original_scale", "cover", "dynamic_cover"):
+                u = (video_info.get(key) or {}).get("url_list") or []
+                if u:
+                    cover_url = u[0]
+                    break
 
             return AudioDownloadResult(
                 file_path=output_path,
-                title=video_data['aweme_detail']['item_title'],
-                duration=video_data['aweme_detail']['video']['duration'],
-                cover_url=video_data['aweme_detail']['video']['cover_original_scale']['url_list'][0] if
-                video_data['aweme_detail']['video']['cover'] else video_data['video']['big_thumbs']['img_url'],
+                title=title,
+                duration=duration,
+                cover_url=cover_url,
                 platform="douyin",
-                video_id=video_data['aweme_detail']['aweme_id'],
+                video_id=aweme_id,
                 raw_info={
-                    'tags': video_data['aweme_detail']['caption'] + ''.join(tags),
+                    'tags': (detail.get('caption') or '') + ''.join(tags),
                 },
                 video_path=None  # ❗音频下载不包含视频路径
             )

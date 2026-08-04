@@ -20,7 +20,11 @@ class QwenGPT(GPT):
         self.screenshot = False
 
     def _format_time(self, seconds: float) -> str:
-        return str(timedelta(seconds=int(seconds)))[2:]  # e.g., 03:15
+        # ≥1h 保留小时位，<1h 输出 MM:SS（如 03:15）
+        total = int(seconds)
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
     def _build_segment_text(self, segments: List[TranscriptSegment]) -> str:
         return "\n".join(

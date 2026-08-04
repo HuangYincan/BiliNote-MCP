@@ -1,404 +1,232 @@
-# BiliNote-MCP
+<p align="center"><img src="assets/cover-light.png" alt="VideoNote-Mcp"/></p>
+<h1 align="center">🎬 VideoNote-Mcp</h1>
+<p align="center"><em>视频链接 → 多格式笔记</em><br/>一条链接 → 一篇笔记 · 端到端或解耦，任意组合</p>
+<p align="center"><strong>🇨🇳 中文</strong> | <a href="./README_EN.md">🇬🇧 English</a></p>
+<p align="center">
+  <a href="#-快速开始">⚡ 快速开始</a> •
+  <a href="#-文档">📚 文档</a> •
+  <a href="#-流水线地图">🗺️ 流水线地图</a> •
+  <a href="#0--端到端全流程">0 端到端</a> •
+  <a href="#1--下载与平台解析">1 下载</a> •
+  <a href="#2--语音转写asr">2 转写</a> •
+  <a href="#3--视频画面理解抽帧">3 画面</a> •
+  <a href="#4--弹幕与评论">4 弹幕</a> •
+  <a href="#5--ai-总结与笔记">5 总结</a> •
+  <a href="#6--多格式导出">6 导出</a> •
+  <a href="#7--音频增强">7 音频</a> •
+  <a href="#8--任务管理与清理">8 任务</a> •
+  <a href="#-最佳实践">🏆 最佳实践</a> •
+  <a href="#-如何贡献">🤝 如何贡献</a> •
+  <a href="#-致谢">🙏 致谢</a>
+</p>
 
-**中文** · [English](README_EN.md)
 
-> 视频链接 → AI Markdown 笔记。基于 [BiliNote](https://github.com/JefferyHcool/BiliNote) 核心能力封装成的 **MCP Server（Model Context Protocol）+ Claude Code Skill**：给 agent 一个链接，它下载、转写、总结，交回一份结构化笔记 —— 全程无需启动后端。
+---
 
-<div align="center">
+VideoNote-Mcp 把「视频链接 → 多格式笔记」整条流水线打包成 **MCP Server + Claude Code Skill**：给 agent 一个链接，它自动完成 下载 → 语音转写 → 画面理解 → 弹幕/评论 → AI 总结，交回一篇带截图、可整体搬迁的便携笔记。
 
-[![GitHub stars](https://img.shields.io/github/stars/HuangYincan/BiliNote-MCP?logo=github)](https://github.com/HuangYincan/BiliNote-MCP)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)]()
-[![MCP](https://img.shields.io/badge/MCP-Server-6C5CE7)]()
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-D97757)]()
-[![BiliNote-MCP MCP server](https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP/badges/score.svg)](https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP)
+仓库：[HuangYincan/VideoNote-MCP](https://github.com/HuangYincan/VideoNote-MCP)。
 
-</div>
+本项目**既可端到端使用（一条链接 → 一篇笔记）**，**也可解耦**：流水线每一阶段（下载 / 转写 / 抽帧 / 评论 / 总结 / 导出 / 增强 / 清理）都是独立 MCP 工具，想只用某一步、或自己拼素材再总结，都能任意组合。无需启动任何后端服务。
 
-<p align="center"><a href="https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP"><img src="https://glama.ai/mcp/servers/HuangYincan/BiliNote-MCP/badges/card.svg" alt="BiliNote-MCP MCP server" width="600"></a></p>
+<p align="center">
+  <a href="https://github.com/HuangYincan/VideoNote-MCP"><img src="https://img.shields.io/github/stars/HuangYincan/VideoNote-MCP?logo=github" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a><img src="https://img.shields.io/badge/MCP-Server-6C5CE7" alt="MCP"></a>
+  <a><img src="https://img.shields.io/badge/Claude%20Code-Skill-D97757" alt="Claude Code"></a>
+  <a href="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP"><img src="https://glama.ai/mcp/servers/HuangYincan/VideoNote-MCP/badges/score.svg" alt="VideoNote-MCP MCP server"></a>
+</p>
 
-📦 仓库：[HuangYincan/BiliNote-MCP](https://github.com/HuangYincan/BiliNote-MCP)
+---
 
-## ✨ 特性
-
-- **🗜️ 内嵌流水线** —— 下载（yt-dlp）→ 字幕/转写（本地 faster-whisper 或云端 groq/bcut）→ **视频理解（按间隔抽帧，多模态 LLM 看画面）** → LLM 总结 → Markdown 笔记。全部逻辑在本仓库内，**无需启动 BiliNote 的 FastAPI 后端与 Web UI**。
-- **🧠 无 RAG** —— agent 拿到 Markdown 后自己阅读、自己回答，不需要 ChromaDB / embedding，轻量即用。
-- **📦 自包含** —— `app/` 目录复制自上游（见 [VENDOR.md](VENDOR.md)），pip / uv 一键安装。
-
-## 快速开始（TL;DR）
-
-```bash
-# 装：一条命令装好 Skill + MCP
-claude plugin marketplace add HuangYincan/BiliNote-MCP
-claude plugin install bilinote@bilinote
-
-# 配：LLM key + 语音转写引擎（隐藏输入 key）
-bilinote-mcp setup
-
-# 用：重启会话，对 agent 说「帮我给这个视频做笔记」+ 链接
-```
-
-> `bilinote-mcp` 是 CLI 简写，未在 PATH 时用 `uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（见 [前提条件](#前提条件)）。
-
-| 安装方式 | 内容 | 适合 |
-|----------|------|------|
-| **一 · 插件 marketplace**（推荐） | Skill + MCP（uvx 自动更新） | 大多数用户 |
-| 二 · 只装 MCP（uvx） | 仅 MCP | 不想装 Skill |
-| 三 · uv tool install | 仅 MCP（固定版本，启动最快 ~1s） | 要稳定版本 |
-| 四 · 克隆 + install.sh | MCP + Skill + 自动 setup，无 uv 兜底 | 没装 uv / 想跑源码 |
-
-## 真实端到端使用示例
-
-只给「3 个 B 站链接 + 输出目录」、**一个参数都没说明**，agent 就自动跑完 **参数确认 → 多视频并行 → 视频理解截图 → 弹幕/评论整合 → 基于字幕精修**，产出三份带截图、含「观众观点」的便携精修笔记：
-
-- [雅思教父刘洪波的雅思真经第一课](https://www.bilibili.com/video/BV1c54y187SH/) → [`notes/ielts-true-class/note.md`](examples/note-generation-example/notes/ielts-true-class/note.md)
-- [和解剖了4000具尸体的法医，一起看了影片中的尸体](https://www.bilibili.com/video/BV1QEgZ6rEGj/) → [`notes/forensic-doctor-reacts/note.md`](examples/note-generation-example/notes/forensic-doctor-reacts/note.md)
-- [李宏毅 | 自注意力机制和Transformer详细解析](https://www.bilibili.com/video/BV1r8nMz4EAj/) → [`notes/transformer-self-attention/note.md`](examples/note-generation-example/notes/transformer-self-attention/note.md)
-
-完整过程记录（前置参数 / Prompt / 参数确认对话 / 输出结果）见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
-
-> 💡 **以下从「安装」到「工具参考」都写得尽量详细，主要是给 Agent 看的**（Claude Code 等）。人类完全不必逐条照做 —— 直接对 agent 说一句「帮我安装这个 MCP 并生成视频笔记」，它就会照着下面的命令一步步执行。
-
-## 安装
-
-### 前提条件
-
-- **uv**（Python 包管理器，必需 —— uvx / uv tool 方式装 MCP 和 CLI 都靠它）：
-  `curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `brew install uv`
-  > 没有 uv？走「[方式四](#方式四克隆--installsh)」，脚本内置 pip 兜底。
-- **Python ≥ 3.11，<3.14**（推荐 3.12，`.python-version` 已锁定）
-- **FFmpeg**（音频/视频处理必需）：`brew install ffmpeg`（Linux：`apt install ffmpeg`）
-- **LLM 供应商 API Key**（见[配置](#配置装完必做)）
-- **本地转写**：本地 whisper 需先下载模型 `bilinote-mcp transcriber download <size>`（tiny/base/small/medium/large-v3/large-v3-turbo），或改用云端 `groq` / `bcut`（免下载）
-- **GPU 加速（可选）**：
-  - **NVIDIA / Linux**：whisper 默认 CPU；想用 CUDA，装工具时带 `--with torch`（CUDA 版 torch），推理时自动检测 GPU，否则回退 CPU
-  - **macOS Apple Silicon**：用 `mlx-whisper` 走 GPU —— 装工具时 `--with mlx-whisper`，切引擎 `bilinote-mcp transcriber set mlx-whisper --size small`
-- **CLI 命令可用形式**：正文里的 `bilinote-mcp ...` 是简写，等价于：
-  - 有 uv：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp ...`（`--from` 必须带 `git+` 前缀）
-  - 方式四（pip 装的 venv）：`<仓库路径>/.venv/bin/bilinote-mcp ...`
-  - 想让 `bilinote-mcp` 直接可用：`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp` + `uv tool update-shell` 加入 PATH
-
-### 方式一：插件 marketplace —— Skill + MCP（推荐）
+## ⚡ 快速开始
 
 ```bash
-claude plugin marketplace add HuangYincan/BiliNote-MCP
-claude plugin install bilinote@bilinote
+# 1) 一条命令装好 Skill + MCP（插件 marketplace，uvx 自动更新）
+claude plugin marketplace add HuangYincan/VideoNote-MCP
+claude plugin install videonote@videonote
+
+# 2) 配置 LLM key + 语音转写引擎（key 不进对话）
+videonote setup
+
+# 3) 重启会话，对 agent 说「帮我给这个视频做笔记」+ 链接
 ```
 
-两条命令同时装好 **Skill + MCP server**（MCP 走 `uvx`，每次会话自动拉最新 commit）。装完重启会话（或 `/reload-plugins`）。运行数据统一在 `~/.local/share/bilinote-mcp/`。
+> [!TIP] 
+> 四种安装方式、配置细节、更新与安全见 [docs/04-使用手册.md](docs/04-使用手册.md)。
+> 
 
-> **插件默认的 MCP 不含 `mlx-whisper`**（可选依赖，仅 macOS；默认加会让 Linux/Windows 装不上）。想在 MCP 里用 mlx-whisper，手动覆盖 MCP 命令：
->
-> ```bash
-> claude mcp add bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP --with mlx-whisper bilinote-mcp
-> ```
->
-> 手动注册后会话用的是这份（`claude mcp list` 显示它即生效）。若与插件同名 `bilinote` 冲突/不生效，先 `claude mcp remove bilinote` 再重加，或改用 `~/.local/bin/bilinote-mcp`（`uv tool install --with mlx-whisper` 装的那个）作为 MCP 命令。
+## 📚 文档
 
-### 方式二：只装 MCP（不装 Skill）
+安装 / 配置 / 使用 / 环境变量 / 更新 / 安全等完整说明已归档到 `docs/`（README 只保留概览）：
 
-```bash
-claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
+- [📇 文档索引](docs/00-文档索引.md)
+- [🏗️ 架构设计](docs/02-架构设计.md)
+- [📖 使用手册](docs/04-使用手册.md) —— 安装（4 种方式）· 配置（setup 向导 + CLI）· 环境变量 · 更新 · 安全
+- [📜 更新日志](docs/CHANGELOG.md)
+
+---
+
+## 🗺️ 流水线地图
+
+```mermaid
+flowchart LR
+    A["视频链接"] --> B["下载音视频<br/>+ 平台字幕"]
+    B --> C["语音转写<br/>或直接用平台字幕"]
+    B -. 可选 .-> D["逐帧画面理解<br/>关键帧 → 网格图"]
+    B -. 可选 .-> E["弹幕 + 评论区"]
+    C --> F["素材包<br/>转写 · 帧 · 评论"]
+    D -.-> F
+    E -.-> F
+    F --> G["AI 总结 → Markdown 底稿<br/>正文 + 截图 + 「观众观点」"]
+    G --> O1["便携笔记<br/>note.md + Assets/"]
+    G --> O2["字幕导出<br/>SRT · VTT · JSON"]
+    G -. Agent 生成 .-> O3["创意格式<br/>思维导图 · 闪卡 · LaTeX · typst"]
+    G -. 可选 .-> O4["基于完整字幕精修<br/>保留原版对比"]
 ```
 
-即方式一的 MCP 部分。MCP server 是**会话级常驻进程**（会话开始启动一次，工具调用不重新拉起）。
+| 阶段 | 职责 | 典型工具 |
+|------|------|----------|
+| [0 🔄 端到端全流程](#0--端到端全流程) | 一条链接 → 一篇笔记，全自动跑完整条流水线 | `generate_note` / `wait_for_note` |
+| [1 📥 下载与平台解析](#1--下载与平台解析) | 识别平台并下载音/视频，覆盖 1800+ 站点与本地文件 | `validate_url` / `fetch_subtitles` |
+| [2 🎙 语音转写（ASR）](#2--语音转写asr) | 音轨转文字，本地 / 云端多引擎可选 | `transcribe_media` / `set_transcriber` |
+| [3 🖼️ 视频画面理解（抽帧）](#3--视频画面理解抽帧) | 按间隔抽帧，多模态 LLM「看」画面 | `extract_frames` / `video_understanding` |
+| [4 💬 弹幕与评论](#4--弹幕与评论) | 抓取 B 站弹幕与评论区观点 | `fetch_danmaku` / `fetch_comments` |
+| [5 ✍️ AI 总结与笔记](#5--ai-总结与笔记) | 素材 → 结构化 Markdown，9 种风格可选 | `summarize_note` / `list_providers` |
+| [6 📤 多格式导出](#6--多格式导出) | SRT/VTT/JSON 机械导出 + 创意格式（Agent 生成） | `export_transcript` |
+| [7 🎛️ 音频增强](#7--音频增强) | 多文件合并、预处理、说话人分离 | `merge_audio` / `diarize_media` |
+| [8 🗂️ 任务管理与清理](#8--任务管理与清理) | 全局任务索引、占用查看、按需清理 | `list_tasks` / `cleanup_note` |
 
-### 方式三：uv tool install —— 固定版本、启动最快
+---
 
-```bash
-uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp
-claude mcp add bilinote -- "$HOME/.local/bin/bilinote-mcp"
-```
+# 0 🔄 端到端全流程
 
-每次会话**直接启动进程（约 1s）**、不访问仓库；版本被固定，更新需重跑上面的 `uv tool install --force`。
+端到端模式只给一条链接即可：`generate_note` 异步跑完整条流水线并返回 `task_id`；用轻量 `get_task_status` 快照轮询到 `SUCCESS/FAILED/CANCELLED`（任务一次只发一个），`wait_for_note` 可阻塞等最终 Markdown，`cancel_note` 协作式取消。「AGENT 直接生成」走 `prepare_note_material` —— 只准备素材包、**不调用配置 LLM**，由 agent 自己读转写、看图、写笔记。
 
-> macOS Apple Silicon 想用 **MLX Whisper**（更快的本地转写，可选依赖）：安装时带上
-> `uv tool install --force --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`
-
-### 方式四：克隆 + install.sh
-
-```bash
-git clone https://github.com/HuangYincan/BiliNote-MCP.git
-cd BiliNote-MCP && ./install.sh
-```
-
-无 uv 也能用（脚本用 pip 建 `.venv`）。install.sh：创建 venv → 注册 MCP → 安装 Skill → **自动弹出 `bilinote-mcp setup` 向导**。非交互终端会跳过，可稍后手动跑。
-
-## 配置（装完必做）
-
-> 安装只让 MCP / Skill 跑起来；**LLM API key 和语音转写引擎需单独配置**（key 是你的、模型要选）。所有方式共用同一数据目录（`~/.local/share/bilinote-mcp/`），配好即会话内生效。
-
-### 交互向导 `setup`（推荐，随时可反复进入修改）
-
-```bash
-bilinote-mcp setup        # 未在 PATH 时：uvx --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp setup
-```
-
-**方向键选择 + 高亮**、**左键返回上一级**、每步自动清屏不留历史；**不是一次性程序**，随时重跑即可改配置：
-
-- **① LLM 供应商**：选一个填/改 key、改 base_url、新增中转站；**每供应商可检测连接（验证 key/base_url）、列出可用模型并选默认模型**（默认模型持久化，生成笔记未指定模型时自动使用）；
-- **② 语音转写引擎**：选引擎 + 模型尺寸，本地模型未下载会提示下载；
-- **③ 其他**：平台 Cookie（平台下拉选择）、默认笔记位置（**持久化保存**）、**视频理解默认**（开/关 + 帧间隔秒数，**持久化保存**）、**评论/弹幕整合默认**（开/关 + 评论条数，**持久化保存**，需 B 站 SESSDATA）、**笔记默认**（`default_style` 默认 detailed / `default_screenshot` 默认关 / `agent_direct` 默认关，**持久化保存**）—— 全自动模式套用这些默认（会先列出完整参数清单给用户确认）。
-
-### 手动 CLI（key 不进对话）
-
-```bash
-# LLM 供应商
-bilinote-mcp providers list                                    # 查看（key 掩码）
-bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 给内置供应商填 key
-bilinote-mcp providers add --name 中转站 --api-key 'sk-...' --base-url 'https://relay...'   # 新增中转站
-bilinote-mcp providers test deepseek                            # 检测连接 + 列出可用模型
-bilinote-mcp providers test deepseek --default deepseek-chat    # 检测并设为默认模型
-
-# 语音转写引擎
-bilinote-mcp transcriber list                                  # 查看当前引擎与就绪状态
-bilinote-mcp transcriber set fast-whisper --size small          # 切本地 whisper
-bilinote-mcp transcriber set groq                               # 切云端
-bilinote-mcp transcriber download small                          # 下载 fast-whisper 模型
-bilinote-mcp transcriber download small --engine mlx-whisper     # 下载 mlx-whisper（macOS）
-
-# B 站（用 AI 字幕跳过语音识别）
-bilinote-mcp login bilibili     # 扫码登录，自动获取并保存 SESSDATA（AI 字幕需登录态）
-```
-
-**转写引擎**：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（**仅 macOS Apple Silicon**，GPU 加速）。
-
-**本地 whisper 尺寸**：`tiny` / `base` / `small` / `medium` / `large-v3` / **`large-v3-turbo`**（turbo 更快、精度略低于 large-v3）。
-
-**设备**：whisper 会自动检测 CUDA（装了 torch+CUDA 就用 GPU，否则回退 CPU）；macOS 的 GPU 用 `mlx-whisper`。CLI `transcriber download` 用 CPU 只是因为它**只下载权重、不推理**（device 参数不影响下载结果）。
-
-### 没有 LLM API key？
-
-- **本地免费**：装 [Ollama](https://ollama.com) 并 `ollama pull llama3`。内置 `ollama` 供应商已预置（`http://127.0.0.1:11434/v1`，**无需 key**），`list_models("ollama")` 有模型即可用。
-- **免费额度**：Groq / DeepSeek 等有免费 tier，注册后 `providers set` 填 key。
-- 对 agent 说「我没有 LLM key」，它会先查 Ollama 是否可用，再引导你注册。
-
-## 使用
-
-### 给 agent 用（Claude Code 等）
-
-对 agent 说「**给这个视频做笔记**」+ 链接即可，标准流程：
-
-1. `health_check` —— 确认 FFmpeg / 数据库就绪；
-2. `list_providers` —— 确认供应商 key=已填（看不到明文）；没有就先用 CLI 配；
-3. `generate_note(video_url=..., provider_id=..., model_name=...)` —— 拿 `task_id`；
-4. `get_task_status(task_id)` **轻量快照轮询**，等到 `SUCCESS`/`FAILED`/`CANCELLED`（**任务一次只发一个**，server 有进行中任务时会拒绝新提交；不要并行塞多个 `generate_note`）；
-5. 拿到 `result.markdown` 后，**agent 自己阅读 Markdown 回答你的问题** —— 不需要额外 RAG；
-6. **问你是否要根据笔记 + 提取的字幕（`result.transcript`）做后续优化**（补齐细节/修正不一致/增强结构）—— agent 侧精修，不新增工具。
-
-### 全自动 / 手动模式 + AGENT 直接生成
-
-任务开始时 agent **会先问「全自动」还是「手动」**：
-
-- **全自动**：用 setup ③ 的默认解析出**完整参数清单**（生成方式/LLM 模型（或选 AGENT 直接生成）/ `default_style`（默认 detailed）/ 视频理解默认 / 评论默认 / 截图默认 / **生成后是否后续优化**），**一次性列给用户确认**、不逐个问；用户要改某项再以提问方式改，确认后 `generate_note` 不传 style / screenshot / video_understanding / include_comments / agent_direct 即套默认。「AGENT 直接生成」在选 LLM 模型阶段提供（默认用配置 LLM）。
-- **手动**：逐个确认参数（LLM 模型、笔记风格、视频理解、评论/弹幕、截图、是否 AGENT 直接生成），确认完再生成。
-
-**AGENT 直接生成（`agent_direct`）**：在**选 LLM 模型阶段**提供选项 —— 手动模式问「用哪个模型，还是 AGENT 直接生成」；全自动模式默认用配置 LLM，可在参数清单里改选。开启后**不走配置的 LLM**，由 agent 自己写笔记：
-
-1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`；
-2. `get_task_status(task_id)` 轮询到 `SUCCESS` → 拿到素材包（`result.transcript.full_text` 完整转写、`result.frames` 抽帧图、`result.comments_danmaku` 评论/弹幕）；
-3. agent 读转写 / 用 Read 看图 → **自己生成 Markdown**（问风格，默认 detailed；有评论/弹幕时笔记含「观众观点」章节）→ 呈现。
-
-转写过长（如 2h 视频）时按章节分段精修或让用户指定重点。其余流程（health_check / validate_url / 轮询 / 后续优化）与常规一致。
-
-### 手动工具速查（非敏感配置）
-
-| 想做什么 | 用哪个工具 |
-|----------|-----------|
-| 看供应商 / 给内置填 key | `list_providers`（key 掩码） / **CLI** `providers set` |
-| 看 / 加模型 | `list_models(provider_id)` / `add_model(provider_id, "deepseek-chat")` |
-| 检测连接 / 设默认模型 | `bilinote-mcp providers test <id> [--default MODEL]`（非交互；向导内走「管理 → 检测连接」） |
-| 本地转写 | `set_transcriber("fast-whisper", "small")` + `download_transcriber_model("small")` |
-| 云端转写 | `set_transcriber("groq")`（groq 的 key 用 CLI 填） |
-| B 站需登录内容 | `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")` |
-| 本地文件 | `generate_note(video_url="/绝对/路径/a.mp4", platform="local", ...)` |
-
-> 涉及 **key 的操作一律走 CLI（对话外）**，工具只做非敏感配置 —— 见[安全说明](#安全api-key)。
-
-### 进阶：视频理解（画面切片）
-
-想让 agent 按时间间隔抽**视频画面**发给多模态 LLM（如 qwen-vl / gpt-4o）做「看画面」的理解，`generate_note` 直接支持：
-
-```text
-generate_note(video_url=..., provider_id="qwen", model_name="qwen-vl-plus",
-              video_understanding=True, video_interval=6, grid_size=[3, 3])
-```
-
-- 每 `video_interval` 秒抽一帧，按 `grid_size` 拼成网格图，以 base64 内嵌发给 LLM；
-- **需多模态（vision）模型**，deepseek-chat 等纯文本模型不支持；
-- `grid_size` 缺省自动 `[3, 3]`（`format=["screenshot"]` 截图模式为 `[2, 2]`）；
-- **默认值可在 setup ③ 配置**（默认关 / 6s）：agent 未显式传 `video_understanding` / `video_interval` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否启用 + 间隔，只有用户说「你定/用默认」才用默认值；**全自动模式**套默认（先列出参数清单待确认））；
-- 想在 markdown 里按 `*Screenshot-mm:ss` 标记插**单张**截图，用 `format=["screenshot"]`（区别于整片帧网格）。
-
-### 进阶：整合弹幕+评论区观点
-
-想让笔记把 B 站**弹幕**和**评论区**的高频观点也整理进去（哪些弹幕刷屏、评论区在聊什么），`generate_note` 加：
-
-```text
-generate_note(video_url=..., ..., include_comments=True, comments_limit=20)
-```
-
-- 整合弹幕+评论区观点，让笔记不仅来自音轨，还能反映观众讨论；
-- **笔记会新增一节「观众观点」**：总结弹幕刷屏/评论区反复出现的观点、补充、纠错（引用实际内容，不捏造）；无可总结时写「（无）」；
-- `comments_limit` 控制抓取的评论条数（默认 20）；
-- **需 B 站 SESSDATA**（登录态）：没配则评论拿不到 —— 先 `bilinote-mcp login bilibili` 扫码（或 `set_downloader_cookie(platform="bilibili", cookie="SESSDATA=...")`）；
-- **抓取失败不阻断任务**：拿不到评论/弹幕时笔记照常生成，跳过该部分即可；
-- 只想单独拉数据看，用 `fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)` 两个工具；
-- **默认值可在 setup ③ 配置**（默认关 / 20条）：agent 未显式传 `include_comments` / `comments_limit` 时自动套用（**手动模式下 SKILL 仍要求先问用户**本次是否整合，只有用户说「你定/用默认」才用默认值；**全自动模式**套默认（先列出参数清单待确认））。
-
-### 进阶：图片插入（便携笔记）
-
-想让笔记带截图、且能整体搬迁，`generate_note` 加：
-
-```text
-generate_note(video_url=..., provider_id=..., model_name=..., screenshot=True, format=["screenshot"])
-```
-
-- 产出**便携笔记**：`note_dir/note.md` + `note_dir/Assets/*.jpg`，markdown 里用**相对引用** `![...](Assets/xxx.jpg)`；
-- 任务结果里 `result.note_dir` 指向该目录（agent 会告诉你笔记和图片在哪）；
-- **保存位置**优先级：`generate_note(..., notes_dir="/你/指定/的目录")` → `BILINOTE_NOTES_DIR` 环境变量 → 默认 `note_results/{task_id}/`；
-- **指定了 `notes_dir` 时，每篇笔记一个文件夹**：`<notes_dir>/<笔记标题>/note.md`（标题取 LLM 生成的笔记 H1，回退视频标题；冲突自动加短 task_id 后缀）—— 即使不插图片也会写文件（适合「生成笔记到某文件夹」，且多篇互不覆盖）；
-- 前提：`screenshot=True` 让 LLM 在笔记里生成 `*Screenshot-[mm:ss]` 标记，`format=["screenshot"]` 负责替换成图片；配视频理解（`video_understanding=True`）时画面理解与截图更自然。
-
-### 进阶：清理与存储（cleanup）
-
-任务产生的文件（下载的视频/音频、转写、截图、临时文件）会堆积占存储。AGENT 可自助清理：
-
-- **先查后清**：`get_task_files(task_id)` —— 列出该任务在磁盘上相关的文件/目录（manifest 记录 + `{task_id}*` 前缀扫描），返回 `{task_id, manifest_paths, existing}`。
-- **按任务清理**：`cleanup_note(task_id, include_note=False)` —— 删该任务中间产物（视频/音频/转写/截图/`dl_{task_id}/`），**默认保留最终笔记** `note.md`；`include_note=True` 连笔记一起删。
-- **全局清理（恢复出厂）**：`cleanup_all(include_config=False, include_models=False)` —— 清空 `note_results/*`、`static/screenshots/*`、`logs/*`；**默认保留** `config/`（LLM key / cookie / 转写设置）与 `models/`（模型可复用、重下成本高），`include_config=True` / `include_models=True` 才一起清。数据库记录（`bili_note.db`）不动。
-
-安全：只删 manifest 记录 / 明确前缀模式的文件，删除前 `resolve()` 校验在数据目录内（防路径穿越），失败逐条跳过并返回统计。
-
-## 工具参考
-
-| 工具 | 说明 |
-|------|------|
-| `generate_note` | 提交视频 URL，异步生成笔记，返回 task_id（支持视频理解 + 图片插入便携笔记 + `extras` 自定义风格，见[使用说明](#进阶视频理解画面切片)） |
-| `prepare_note_material` | 只跑下载/转写/抽帧/评论，**不调用配置 LLM**；返回素材包（`transcript.full_text` / `frames` / `comments_danmaku`），供 AGENT 直接生成笔记（见[全自动 / 手动模式 + AGENT 直接生成](#全自动--手动模式--agent-直接生成)） |
-| `get_task_status` / `wait_for_note` | 轮询任务进度 / 阻塞等待最终 Markdown |
-| `cancel_note` | 取消进行中/排队的任务（协作式，下一阶段边界生效） |
-| `list_providers` / `add_provider` / `update_provider` | 查看（掩码）/ 新增 / 更新供应商（填 key 建议走 CLI） |
-| `list_models` / `add_model` | 查看（实时/回退本地）/ 手动添加模型 |
-| `get_transcriber_config` / `set_transcriber` | 查看 / 切换转写引擎（本地 whisper ↔ 云端 groq） |
-| `list_transcriber_models` / `download_transcriber_model` | whisper 模型管理 |
-| `health_check` | FFmpeg / 数据库 / whisper 就绪状态 |
-| `validate_url` | 判断视频链接属于哪个平台 |
-| `set_downloader_cookie` | 设置平台 Cookie（如 B 站） |
-| `fetch_comments` / `fetch_danmaku` | 抓取 B 站视频评论 / 弹幕（`fetch_comments(video_url, limit=20)` / `fetch_danmaku(video_url)`，需 SESSDATA） |
-| `get_task_files` / `cleanup_note` / `cleanup_all` | 查看任务占用文件 / 按任务清理（默认保留最终笔记）/ 全局清理（恢复出厂，默认保留配置与模型），见[清理与存储](#进阶清理与存储cleanup) |
-
-## 环境变量（可选）
-
-| 变量 | 作用 | 默认 |
+| 工具 | 说明 | 类型 |
 |------|------|------|
-| `BILINOTE_DATA_DIR` | 数据根目录（SQLite / 笔记 / 截图 / 配置） | 安装模式 `~/.local/share/bilinote-mcp`，源码 `仓库/data` |
-| `BILINOTE_NOTES_DIR` | 默认笔记输出目录（指定 `notes_dir` 时的兜底） | `note_results/{task_id}/` |
-| `BILINOTE_CONFIG_DIR` | 配置文件目录（转写/cookie/app 配置） | `<数据目录>/config` |
-| `BILINOTE_MODEL_DIR` | whisper / mlx 模型目录 | `<数据目录>/models`（源码 `仓库/models`） |
-| `BILINOTE_MAX_WORKERS` | 单个 MCP 会话内**并发笔记任务数** | 3 |
-| `HF_ENDPOINT` | HuggingFace 镜像（国内下载慢/卡时用） | 官方 `https://huggingface.co`；国内可 `https://hf-mirror.com` |
+| `generate_note` | 一条链接 → 异步生成笔记，返回 task_id（支持视频理解 / 评论整合 / 截图便携笔记） | MCP 工具 |
+| `get_task_status` / `wait_for_note` | 轻量轮询任务状态 / 阻塞等待最终 Markdown | MCP 工具 |
+| `cancel_note` | 协作式取消进行中 / 排队任务 | MCP 工具 |
+| `prepare_note_material` | 只准备素材包（转写 / 抽帧 / 评论），供 AGENT 直接生成 | MCP 工具 |
+| AGENT 直接生成（`agent_direct`） | agent 读素材包自己写笔记，不走配置 LLM | SKILL / Agent 编排 |
 
-**会话内串行 + 多会话并行**：每个 Claude Code 会话独立起一个 MCP server 进程。**本会话内任务强制串行** —— `generate_note` 在已有进行中任务时会**直接拒绝**（必须一次一个：提交 → 等到 `SUCCESS`/`FAILED`/`CANCELLED` → 再提交下一个）；**多个会话**可各自并行生成不同视频的笔记（互不干扰）。**注意**：Claude Code 客户端对「同一条消息里多个并行 MCP 工具调用」处理不稳（最后一个响应会卡死、任务也未提交）—— 所以即使跨任务，也**不要在同一消息里并行塞多个 `generate_note`**。**多任务轮询请用轻量 `get_task_status(task_id)` 快照轮询**；`wait_for_note` 是阻塞调用，会卡住当前轮次。需要取消进行中任务用 `cancel_note(task_id)`。注意：whisper / MLX 转写吃 CPU/内存，太多会话并行会拉满机器；所有会话共用同一个 SQLite，极端并发下可能偶发写冲突。
+# 1 📥 下载与平台解析
 
-## 更新
+`validate_url` 判断链接属于哪个平台（bilibili / youtube / douyin / tiktok / kuaishou / local）；内置 6 平台之外返回 `platform:"generic"`，自动走 **yt-dlp 通用提取**覆盖 1800+ 站点。`set_downloader_cookie` 配平台 Cookie（如 B 站 SESSDATA，可跳过登录墙）；`fetch_subtitles` 只取平台字幕，不下载不转写。
 
-各安装方式的更新命令：
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `validate_url` | 识别链接平台；generic 走 yt-dlp 通用提取（1800+ 站点） | MCP 工具 |
+| `set_downloader_cookie` | 设置平台 Cookie（如 B 站 SESSDATA） | MCP 工具 |
+| `fetch_subtitles` | 只取平台字幕（含 B 站 AI 字幕），跳过下载与转写 | MCP 工具 |
 
-| 装的什么 | 更新命令 |
-|----------|----------|
-| **MCP server**（uvx / 插件） | ✅ 自动更新（每次会话查最新 commit），无需手动 |
-| **Skill / 插件** | `claude plugin marketplace update bilinote` + `claude plugin disable bilinote@bilinote` + `claude plugin install bilinote@bilinote` |
-| **`uv tool install` 装的 CLI**（`bilinote-mcp`） | `uv tool upgrade bilinote-mcp`（保留 `--with mlx-whisper` 等附加依赖） |
-| **源码 / `install.sh`** | `git pull && ./install.sh` |
+# 2 🎙 语音转写（ASR）
 
-> **Skill/插件三步各有用**：① `marketplace update` 拉最新 commit；② `disable` 让 `install` 不跳过；③ `install` 重装到最新。缺任一步都可能用旧版（`install` 单独会被「已安装」跳过）。
+`transcribe_media` 只做语音识别：本地音频/视频 → 转写（异步）。引擎可选：`fast-whisper`（本地）/ `groq` / `bcut` / `kuaishou`（云端）/ `mlx-whisper`（macOS Apple Silicon GPU）/ `funasr`（中文最优，VAD + 自动标点）。`set_transcriber` / `get_transcriber_config` / `list_transcriber_models` / `download_transcriber_model` 管理引擎与模型。
 
-## 安全（API Key）
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `transcribe_media` | 本地音频/视频 → 转写（异步轮询） | MCP 工具 |
+| `set_transcriber` / `get_transcriber_config` | 切换 / 查看转写引擎（本地 ↔ 云端） | MCP 工具 |
+| `list_transcriber_models` / `download_transcriber_model` | whisper 模型管理（下载 / 就绪检查） | MCP 工具 |
 
-**红线：不要在对话里把 key 发给 agent。** agent 的对话内容会发送到它的 LLM 上游，key 一旦出现在对话里就等于交给了上游。**key 一律在独立终端走 CLI**（`!` 前缀的命令文本也在对话里，同样不行）：
+# 3 🖼️ 视频画面理解（抽帧）
 
-```bash
-bilinote-mcp providers set deepseek --api-key 'sk-你的key'      # 独立终端执行
-bilinote-mcp providers list                                     # 查看（key 掩码）
+`extract_frames` 只做画面素材：本地 mp4 → 关键帧 `file://` 列表。`generate_note` 直接支持视频理解参数：`video_understanding=True` + `video_interval`（默认 6s）+ `grid_size`（默认 [3,3]），把网格图发给**多模态 LLM**「看」画面。
+
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `extract_frames` | 本地 mp4 → 关键帧 file:// 列表（异步） | MCP 工具 |
+| `video_understanding` / `video_interval` / `grid_size` | 按间隔抽帧 + 网格图内嵌发给多模态模型 | 参数 |
+
+# 4 💬 弹幕与评论
+
+`fetch_comments` / `fetch_danmaku` 单独拉取 B 站评论与弹幕（供预览 / 独立使用）。`generate_note` 加 `include_comments=True` + `comments_limit`（默认 20）会把弹幕刷屏与评论区高频观点整理进笔记，新增「观众观点」章节（需 B 站 SESSDATA；抓取失败不阻断任务）。
+
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `fetch_comments` | 抓 B 站热门评论 | MCP 工具 |
+| `fetch_danmaku` | 抓 B 站弹幕汇总（高密度时段 + 高频词） | MCP 工具 |
+| `include_comments` / `comments_limit` | 笔记新增「观众观点」章节（默认 20 条） | 参数 |
+
+# 5 ✍️ AI 总结与笔记
+
+`summarize_note` 吃**素材包**（字幕 / 帧 / 评论任意组合）→ Markdown。支持 9 种风格：`minimal` / `detailed` / `academic` / `tutorial` / `xiaohongshu` / `life_journal` / `task_oriented` / `business` / `meeting_minutes`；`format=["screenshot"]` 产出便携笔记（`note.md` + `Assets/`，相对引用可整体搬迁）。供应商/模型通过 `list_providers` / `add_provider` / `update_provider` / `list_models` / `add_model` 管理（key 一律走 CLI，对话外）。`agent_direct` 由 AGENT 直接生成。
+
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `summarize_note` | 吃素材包 → Markdown（异步） | MCP 工具 |
+| 9 种笔记风格 + `format` | 风格选择 / screenshot 便携笔记 | 参数 |
+| `list_providers` / `add_provider` / `update_provider` | 供应商管理（key 掩码，填 key 走 CLI） | MCP 工具 |
+| `list_models` / `add_model` | 查看 / 手动添加模型 | MCP 工具 |
+| `agent_direct` | AGENT 自己读素材包写笔记 | SKILL / Agent 编排 |
+
+# 6 📤 多格式导出
+
+机械格式用 `export_transcript`（srt / vtt / json）—— 确定性渲染（时间轴换算），**不耗 LLM**，返回 `file://` 路径。创意格式（思维导图 / 闪卡 / LaTeX / typst / 用户自定义模板）由 **Agent 基于 MD 底稿 + SKILL 模板**生成（LaTeX 内置 academic / lecture / meeting_minutes / minimal 风格）。
+
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `export_transcript` | 转写导出 srt/vtt/json（确定性机械格式） | MCP 工具 |
+| 创意格式 | 思维导图 / 闪卡 / LaTeX / typst → Agent 基于底稿生成 | SKILL / Agent 编排 |
+
+# 7 🎛️ 音频增强
+
+`merge_audio` 把多段录音 / 会议分段 / 多个本地视频合并为 16kHz mono wav 再转写。音频预处理（16kHz 归一 + 超长 >1800s 自动分块，可选降噪）默认关、零硬依赖。`diarize_media` 做说话人分离（pyannote **可选重依赖**，需 HF_TOKEN + 模型授权）。
+
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `merge_audio` | 多文件合并为 16kHz mono wav（FFmpeg concat） | MCP 工具 |
+| 音频预处理 | 16kHz 归一 + 超长自动分块（setup ② 开启） | 配置 |
+| `diarize_media` | 说话人分离（会议纪要 / 多人口播） | MCP 工具 |
+
+# 8 🗂️ 任务管理与清理
+
+每任务一个文件夹 `note_results/{task_id}/`：`raw/`（下载媒体）+ `gen/`（转写/笔记/帧/导出）+ 控制文件；**全局任务索引**在 SQLite `video_tasks` 表（含语义标题）。`list_tasks` 枚举全部任务（按语义标题识别）、`get_task_files` 先查后清、`cleanup_note` / `cleanup_all` 按任务 / 全局清理（默认保留配置与模型）、`health_check` 检查 FFmpeg / 数据库 / whisper 就绪。
+
+```mermaid
+flowchart TB
+    DATA["data/ 数据根"] --> R["note_results/ 任务目录"]
+    DATA --> DB[("video_note.db<br/>SQLite 全局任务索引")]
+    R --> T1["任务 A<br/>note_results/{task_id}/"]
+    R --> T2["任务 B<br/>…"]
+    R --> T3["任务 C<br/>…"]
+    T1 --> RAW["raw/ 原始材料<br/>音视频 · 封面"]
+    T1 --> GEN["gen/ 生成材料"]
+    T1 --> CTRL["status.json · result.json · manifest.json"]
+    GEN --> T1A["transcript.json 转写全文"]
+    GEN --> T1B["note.md 成稿笔记"]
+    GEN --> T1C["Assets/ 笔记内截图"]
+    GEN --> T1D["frames/ 关键帧原图"]
+    GEN --> T1E["srt / vtt / json 字幕导出"]
+    DB -. 索引 .-> T1
 ```
 
-- **agent 只需要知道「key 填没填」**：`list_providers` 返回掩码（`sk-S***cdef`），add/update 工具不回显 key，相关日志已打码。
-- **存哪**：key 只存在本地 SQLite（`~/.local/share/bilinote-mcp/bili_note.db` 或源码 `data/`），已 gitignore，**不会进 GitHub**。
-- **提醒**：key 以明文存在本地数据库（与上游 BiliNote 一致）。若机器可能被他人使用，建议后续用系统 keychain 加密存储。
+| 工具 | 说明 | 类型 |
+|------|------|------|
+| `list_tasks` | 列出全部任务（全局索引，带语义标题） | MCP 工具 |
+| `get_task_files` | 查看单任务占用文件（清理前先查） | MCP 工具 |
+| `cleanup_note` / `cleanup_all` | 按任务清理 / 全局清理（恢复出厂） | MCP 工具 |
+| `health_check` | FFmpeg / 数据库 / whisper 就绪状态 | MCP 工具 |
 
-## Skill
+---
 
-仓库自带 Claude Code Skill —— `skills/bilinote/SKILL.md`，它教 agent 用上面的流程**一句话完成「视频 → 笔记」**（触发词：「生成视频笔记」「帮这个视频做笔记」「从 XX 链接做笔记」）。核心 SKILL 精简为「强制规则 + 工作流」，工具接口 / 配置 / 故障排查在 `skills/bilinote/reference/` 下（agent 需要时按需 Read）。
+## 🏆 最佳实践
 
-通过插件 marketplace 安装（同时装好 Skill 与 MCP server）：
+- **学习备考**：端到端 + 视频理解 + 基于字幕的后续优化，把课程讲透。
+- **会议纪要**：`merge_audio` 合并分段录音 → `diarize_media` 说话人分离 → `meeting_minutes` 风格。
+- **讲座精读**：端到端生成后，agent 基于完整字幕精修、按章节补齐细节。
+- **视频赏析**：开启弹幕 + 评论整合，笔记含「观众观点」章节。
+- **端到端 vs 解耦**：一条链接用 `generate_note`；只要某一步（只转写 / 只抽帧 / 只总结 / 只抓评论）就用独立工具任意组合。
+- **真实案例**：3 个链接 → 3 份精修便携笔记，完整过程记录见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
 
-```bash
-claude plugin marketplace add HuangYincan/BiliNote-MCP
-claude plugin install bilinote@bilinote
-```
+## 🤝 如何贡献
 
-装好后重启会话（或 `/reload-plugins`），对 Claude 说「**帮我给这个视频做笔记**」+ 链接，Skill 自动触发并驱动 MCP 工具。
+- 功能分支 → PR → `dev`（CI 冒烟必须绿）；`dev` 稳定后 PR → `main`（保护分支，需 review）。
+- 流程、分支命名与提交前自查见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 文档
+## 🙏 致谢
 
-详细中文文档见 [docs/](docs/)：
-
-- [目的与背景](docs/01-目的与背景.md)
-- [架构设计](docs/02-架构设计.md)
-- [预期效果](docs/03-预期效果.md)
-- [使用手册](docs/04-使用手册.md)
-- [更新日志](docs/CHANGELOG.md)
-
-## 开发流程
-
-- **日常开发在 `dev` 分支**：功能分支 → PR → `dev`（CI 必须绿）；
-- **发布**：`dev` 稳定后 → PR `dev` → `main`（CI + review 通过才合）→ 打 `vX.Y.Z` tag → [Release workflow](.github/workflows/release.yml) 自动发 GitHub Release；
-- **`main` 有分支保护**：直接 push 被拒，只接受 PR 合入 —— 保证 `main` 永远可用（`uvx --from git+` 安装直接拉 main）；
-- 稳定安装用 tag：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@v0.1.0 bilinote-mcp`（追新去掉 `@v0.1.0`）。
-
-## 开发版（dev 分支尝鲜）
-
-`dev` 分支有未发布的新功能（尝鲜/测试用）。想提前用 dev（**从 main 切到 dev**）：
-
-**MCP 工具指 dev**（覆盖插件的 main MCP）：
-
-```bash
-claude mcp remove bilinote                                 # 如果先前在 main：先移除插件默认的 main MCP，再覆盖成 dev（同名 add 才能生效）
-claude mcp add --scope user bilinote -- uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp
-```
-
-**SKILL 也指 dev**（marketplace 指到 dev 分支）：
-
-```bash
-claude plugin marketplace add HuangYincan/BiliNote-MCP@dev
-claude plugin disable bilinote@bilinote
-claude plugin install bilinote@bilinote
-```
-
-重启会话（或 `/reload-plugins`）生效。
-
-> **已经 pin 到 dev 后，代码更新了**：只需 `claude plugin marketplace update bilinote`（拉到 dev 最新 commit，`ref: dev` 会保留），再 `disable` + `install`；不用重新 `add @dev`。只有 marketplace 被切回 main 时才需要再 `add ...@dev`。
-
-**切回 main（稳定版）**：
-
-```bash
-claude mcp remove bilinote                                   # MCP 恢复插件默认（main）
-claude plugin marketplace add HuangYincan/BiliNote-MCP       # marketplace 回 main
-claude plugin disable bilinote@bilinote
-claude plugin install bilinote@bilinote
-# /reload-plugins
-```
-
-**CLI 用 dev**（PATH 上的 `bilinote-mcp` 若是 main 固定版）：`uvx --from git+https://github.com/HuangYincan/BiliNote-MCP@dev bilinote-mcp setup`
-
-> **注意**：
-> - dev 与 main **共用数据目录** `~/.local/share/bilinote-mcp/`：LLM key / SESSDATA / 转写配置自动带过来，**不用重配**；但共用同一 SQLite，别两个同时跑任务。
-> - marketplace 指 dev 会**替换**生产 marketplace（不并存），测完记得切回 main。
-> - `git+...@dev` 是 uv/uvx 的分支 ref 语法；不带 ref 的默认安装拉的是 **main**（稳定）。
-> - marketplace 指 dev 只换 **SKILL**；MCP 工具要手动 `@dev` 覆盖（marketplace.json 里的 uvx 无 ref，仍拉 main）。
-> - dev 分支功能未发布，仅尝鲜/测试。
-
-## 相关
-
-- 上游项目：https://github.com/JefferyHcool/BiliNote
+感谢社区与所有贡献者，感谢 [Glama](https://glama.ai) 对 MCP server 的收录，以及所有开源依赖与上游流水线项目的启发。

@@ -17,6 +17,7 @@ class TranscriberType(str, Enum):
     BCUT = "bcut"
     KUAISHOU = "kuaishou"
     GROQ = "groq"
+    FUNASR = "funasr"
 
 # 在 Apple 平台尝试导入 MLX Whisper（不再依赖环境变量，支持前端动态切换）
 MLX_WHISPER_AVAILABLE = False
@@ -37,6 +38,7 @@ _transcribers = {
     TranscriberType.BCUT: None,
     TranscriberType.KUAISHOU: None,
     TranscriberType.GROQ: None,
+    TranscriberType.FUNASR: None,
 }
 
 # 构造单例的锁：并发首个任务同时首次加载 whisper 模型时，只允许一个线程真正构造
@@ -44,11 +46,22 @@ _cache_lock = threading.Lock()
 
 # 公共实例初始化函数
 def _init_transcriber(key: TranscriberType, cls, *args, **kwargs):
-    if _transcribers[key] is None:
-        # 双重检查：防止两个并发任务同时首次构造（whisper 模型加载很重）
+    # 已存在实例且模型尺寸不同 → 重建（否则切模型尺寸后拿到的仍是首次构造的实例，
+    # set_transcriber 配置的 large-v3 永远不会生效）。模型在构造时即加载完毕。
+    want_size = kwargs.get("model_size")
+    existing = _transcribers[key]
+    need_build = existing is None or (
+        want_size is not None and getattr(existing, "model_size", None) != want_size
+    )
+    if need_build:
+        # 双重检查：防止两个并发任务同时首次构造/重建（whisper 模型加载很重）
         with _cache_lock:
-            if _transcribers[key] is None:
-                logger.info(f'创建 {cls.__name__} 实例: {key}')
+            existing = _transcribers[key]
+            need_build = existing is None or (
+                want_size is not None and getattr(existing, "model_size", None) != want_size
+            )
+            if need_build:
+                logger.info(f'创建 {cls.__name__} 实例: {key} (model_size={want_size})')
                 try:
                     _transcribers[key] = cls(*args, **kwargs)
                     logger.info(f'{cls.__name__} 创建成功')
@@ -78,14 +91,20 @@ def get_mlx_whisper_transcriber(model_size="base"):
         raise ImportError("MLX Whisper 不可用")
     return _init_transcriber(TranscriberType.MLX_WHISPER, MLXWhisperTranscriber, model_size=model_size)
 
+def get_funasr_transcriber(device="cpu"):
+    from app.transcriber.funasr_transcriber import FunASRTranscriber
+    return _init_transcriber(TranscriberType.FUNASR, FunASRTranscriber, device=device)
+
 # 通用入口
-def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="cuda"):
+def get_transcriber(transcriber_type="fast-whisper", model_size=None, device="cuda"):
     """
     获取指定类型的转录器实例
 
     参数:
         transcriber_type: 支持 "fast-whisper", "mlx-whisper", "bcut", "kuaishou", "groq"
-        model_size: 模型大小，适用于 whisper 类
+        model_size: 模型大小，适用于 whisper 类；显式传入优先于环境变量
+            （WHISPER_MODEL_SIZE 仅作兜底，避免 setup/set_transcriber 配置的
+            模型尺寸被环境变量覆盖——那是此前模型切换不生效的根因）
         device: 设备类型（如 cuda / cpu），仅 whisper 使用
 
     返回:
@@ -99,7 +118,7 @@ def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="
         logger.warning(f'未知转录器类型 "{transcriber_type}"，默认使用 fast-whisper')
         transcriber_enum = TranscriberType.FAST_WHISPER
 
-    whisper_model_size = os.environ.get("WHISPER_MODEL_SIZE", model_size)
+    whisper_model_size = model_size or os.environ.get("WHISPER_MODEL_SIZE") or "base"
 
     if transcriber_enum == TranscriberType.FAST_WHISPER:
         return get_whisper_transcriber(whisper_model_size, device=device)
@@ -108,8 +127,8 @@ def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="
         if not MLX_WHISPER_AVAILABLE:
             raise RuntimeError(
                 "MLX Whisper 不可用：需要 macOS 平台并安装 mlx_whisper 包。请用 "
-                "`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`"
-                "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `bilinote-mcp transcriber set groq` / fast-whisper"
+                "`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with mlx-whisper`"
+                "（或 `uvx --from ... --with mlx-whisper`）安装；或切换转写引擎 `videonote transcriber set groq` / fast-whisper"
             )
         return get_mlx_whisper_transcriber(whisper_model_size)
 
@@ -121,6 +140,9 @@ def get_transcriber(transcriber_type="fast-whisper", model_size="base", device="
 
     elif transcriber_enum == TranscriberType.GROQ:
         return get_groq_transcriber()
+
+    elif transcriber_enum == TranscriberType.FUNASR:
+        return get_funasr_transcriber(device=device)
 
     # fallback
     logger.warning(f'未识别转录器类型 "{transcriber_type}"，使用 fast-whisper 作为默认')

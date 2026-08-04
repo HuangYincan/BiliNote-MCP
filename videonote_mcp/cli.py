@@ -1,6 +1,6 @@
-"""bilinote-mcp 命令行入口（console script 指向本模块的 main）。
+"""videonote 命令行入口（console script 指向本模块的 main）。
 
-- `bilinote-mcp providers ...` → 轻量 CLI：只导入 provider 相关模块
+- `videonote providers ...` → 轻量 CLI：只导入 provider 相关模块
   （不加载下载器/转写器，启动快、无 import 噪音），在终端直接管理 LLM 供应商。
 - 其余参数（含无参数，MCP stdio 模式）→ 懒加载并启动完整 MCP server。
 
@@ -12,9 +12,10 @@ import builtins
 import json
 import os
 import sys
+from pathlib import Path
 
-from bilinote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
-from bilinote_mcp.provider_probe import probe_chat, probe_models
+from videonote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
+from videonote_mcp.provider_probe import probe_chat, probe_models
 
 # 轻量 CLI 不该被 import 时的裸 print 污染 stdout，先进程级重定向到 stderr
 _orig_print = builtins.print
@@ -178,7 +179,7 @@ _KB = {"interrupt": [{"key": "left"}]}
 def _show_header(section: str = "") -> None:
     """清屏并重绘标题，避免历史信息堆积。"""
     print("\033[2J\033[H", end="", file=sys.stdout)
-    print(f"{_CYAN}⚙  BiliNote-MCP 配置向导{_RESET}  {_DIM}↑↓ 选择 · 回车确认 · ← 返回 · Ctrl-C 退出{_RESET}", file=sys.stdout)
+    print(f"{_CYAN}⚙  VideoNote 配置向导{_RESET}  {_DIM}↑↓ 选择 · 回车确认 · ← 返回 · Ctrl-C 退出{_RESET}", file=sys.stdout)
     if section:
         print(f"{_YELLOW}▶ {section}{_RESET}", file=sys.stdout)
     print("", file=sys.stdout)
@@ -209,6 +210,7 @@ def _wizard(inq) -> None:
                 {"name": "① LLM 供应商（填 key / 检测连接 / 默认模型）", "value": "llm"},
                 {"name": "② 语音转写引擎（选引擎 / 模型尺寸 / 下载）", "value": "transcriber"},
                 {"name": "③ 其他（平台 Cookie / 默认笔记位置 / 视频理解默认 / 评论·弹幕整合默认 / 笔记默认）", "value": "other"},
+                {"name": "④ 数据管理（查看 / 清理任务产物）", "value": "data"},
                 {"name": "✔ 完成 / 退出", "value": "exit"},
             ],
             default="llm",
@@ -220,8 +222,10 @@ def _wizard(inq) -> None:
             _wizard_transcriber(inq)
         elif choice == "other":
             _wizard_other(inq)
+        elif choice == "data":
+            _wizard_data(inq)
         else:
-            print(f"{_GREEN}✔ 配置完成。验证：`bilinote-mcp providers list`、`bilinote-mcp transcriber list`{_RESET}", file=sys.stdout)
+            print(f"{_GREEN}✔ 配置完成。验证：`videonote providers list`、`videonote transcriber list`{_RESET}", file=sys.stdout)
             return
 
 
@@ -392,6 +396,7 @@ def _wizard_transcriber(inq) -> None:
                 ("bcut", "bcut（云端）"),
                 ("kuaishou", "kuaishou（云端）"),
                 ("mlx-whisper", "mlx-whisper（仅 macOS，GPU）"),
+                ("funasr", "funasr（中文最优，VAD+标点）"),
             ):
                 # 注意：InquirerPy 选择项 name 里不能嵌 ANSI 转义码（会原样显示），用纯文本
                 if val == cur_engine:
@@ -401,6 +406,12 @@ def _wizard_transcriber(inq) -> None:
                 else:
                     mark = ""
                 choices.append({"name": base + mark, "value": val})
+            choices.append(
+                {"name": f"音频预处理（16kHz 归一 + 超长分块）：{'开' if cfg.get('enable_preprocess') else '关'}", "value": "preprocess"}
+            )
+            choices.append(
+                {"name": f"说话人分离（pyannote，可选）：{'开' if cfg.get('diarization') else '关'}", "value": "diarization"}
+            )
             choices.append({"name": "← 返回主菜单", "value": "back"})
             pick = inq.select(
                 message=f"当前引擎：{cur}",
@@ -410,6 +421,46 @@ def _wizard_transcriber(inq) -> None:
             ).execute()
             if pick == "back":
                 return
+            if pick == "preprocess":
+                _show_header("音频预处理")
+                print(
+                    f"{_DIM}转写前先把音频归一化为 16kHz mono wav；超长音频自动分块（云端引擎受益；"
+                    f"faster-whisper 自带 VAD 也有帮助）。零额外依赖。{_RESET}",
+                    file=sys.stdout,
+                )
+                cur_on = bool(cfg.get("enable_preprocess", False))
+                on = inq.confirm(message="启用音频预处理？", default=cur_on, keybindings=_KB).execute()
+                TranscriberConfigManager().update_config(cfg["transcriber_type"], enable_preprocess=bool(on))
+                print(f"{_GREEN}✓ 音频预处理：{'开' if on else '关'}{_RESET}", file=sys.stdout)
+                continue
+            if pick == "diarization":
+                _show_header("说话人分离")
+                print(
+                    f"{_DIM}用 pyannote 给转写标说话人（会议纪要/多人口播）。需要 torch + HF_TOKEN + 在"
+                    f"huggingface.co 同意模型授权（重依赖，可选安装）。{_RESET}",
+                    file=sys.stdout,
+                )
+                cur_on = bool(cfg.get("diarization", False))
+                on = inq.confirm(message="启用说话人分离？", default=cur_on, keybindings=_KB).execute()
+                if on:
+                    import importlib.util
+
+                    if importlib.util.find_spec("pyannote") is None:
+                        print(
+                            f"{_YELLOW}⚠ 当前环境未装 pyannote（可选依赖）。{_RESET}",
+                            file=sys.stdout,
+                        )
+                        print(
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
+                            f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。{_RESET}",
+                            file=sys.stdout,
+                        )
+                    hf = inq.secret(message="HuggingFace token（HF_TOKEN，留空跳过）", keybindings=_KB).execute()
+                    if hf:
+                        set_app_config("hf_token", hf)
+                TranscriberConfigManager().update_config(cfg["transcriber_type"], diarization=bool(on))
+                print(f"{_GREEN}✓ 说话人分离：{'开' if on else '关'}{_RESET}", file=sys.stdout)
+                continue
             if pick in ("fast-whisper", "mlx-whisper"):
                 _show_header(f"选择 {pick} 模型尺寸")
                 sizes = [{"name": s, "value": s} for s in _WHISPER_SIZES]
@@ -436,7 +487,7 @@ def _wizard_transcriber(inq) -> None:
                     if mlx_missing:
                         print(
                             f"{_YELLOW}⚠ 当前环境未装 mlx-whisper（可选依赖）。{_RESET}"
-                            f"{_DIM}想用 mlx：`uv tool install --from git+https://github.com/HuangYincan/BiliNote-MCP bilinote-mcp --with mlx-whisper`，"
+                            f"{_DIM}想用 mlx：`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote --with mlx-whisper`，"
                             f"或用 `uvx --from ... --with mlx-whisper` 运行。{_RESET}",
                             file=sys.stdout,
                         )
@@ -471,7 +522,7 @@ def _wizard_transcriber(inq) -> None:
                         print(f"{_GREEN}✓ {label} 下载完成{_RESET}", file=sys.stdout)
                         _show_uninstall_option(inq, pick, size, label)
                     except Exception as e:
-                        print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `bilinote-mcp transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
+                        print(f"{_YELLOW}⚠ 下载失败：{e}（可稍后 `videonote transcriber download {size}` 重试）{_RESET}", file=sys.stdout)
                     try:
                         input("（按回车返回）", )
                     except (EOFError, KeyboardInterrupt):
@@ -479,6 +530,19 @@ def _wizard_transcriber(inq) -> None:
             else:
                 TranscriberConfigManager().update_config(pick)
                 print(f"{_GREEN}✓ 已切换 {pick}{_RESET}", file=sys.stdout)
+                if pick == "funasr":
+                    import importlib.util
+
+                    if importlib.util.find_spec("funasr") is None:
+                        print(
+                            f"{_YELLOW}⚠ 当前环境未装 funasr（可选重依赖）。{_RESET}",
+                            file=sys.stdout,
+                        )
+                        print(
+                            f"{_DIM}`uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
+                            f"--with funasr --with torch`，或用 `uvx --from ... --with funasr --with torch` 运行。{_RESET}",
+                            file=sys.stdout,
+                        )
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
 
@@ -488,7 +552,7 @@ def _wizard_other(inq) -> None:
         while True:
             from app.services.cookie_manager import CookieConfigManager
 
-            notes_dir = get_app_config().get("notes_dir") or os.environ.get("BILINOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
+            notes_dir = get_app_config().get("notes_dir") or os.environ.get("VIDEONOTE_NOTES_DIR") or "（默认 note_results/{task_id}/）"
             vu_on = bool(get_app_config().get("video_understanding", False))
             vu_int = int(get_app_config().get("video_interval") or 6)
             cm_on = bool(get_app_config().get("include_comments", False))
@@ -506,6 +570,7 @@ def _wizard_other(inq) -> None:
                     {"name": f"视频理解默认（{'开' if vu_on else '关'} / {vu_int}s，需多模态模型）", "value": "video"},
                     {"name": f"评论/弹幕整合默认（{'开' if cm_on else '关'} / {cm_lim}条，需 SESSDATA）", "value": "comments"},
                     {"name": f"笔记默认（风格 {st_style} / 截图 {'开' if ss_on else '关'} / AGENT直接写 {'开' if ad_on else '关'}）", "value": "note-default"},
+                    {"name": f"导出格式默认（生成后自动导出：{','.join(get_app_config().get('default_export_formats') or ['无'])}）", "value": "export-default"},
                     {"name": "← 返回主菜单", "value": "back"},
                 ],
                 keybindings=_KB,
@@ -579,7 +644,7 @@ def _wizard_other(inq) -> None:
                 else:
                     lim = cur_lim
                 print(f"{_GREEN}✓ 已保存评论/弹幕整合默认：{'开' if on else '关'} / {lim}条{_RESET}", file=sys.stdout)
-                print(f"{_DIM}需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到。{_RESET}", file=sys.stdout)
+                print(f"{_DIM}需 SESSDATA（`videonote login bilibili`），没配则评论拿不到。{_RESET}", file=sys.stdout)
             elif pick == "note-default":
                 _show_header("笔记默认")
                 print(f"{_DIM}不传 style / screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM。{_RESET}", file=sys.stdout)
@@ -615,8 +680,144 @@ def _wizard_other(inq) -> None:
                 ).execute()
                 set_app_config("agent_direct", bool(ad))
                 print(f"{_GREEN}✓ 已保存笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}{_RESET}", file=sys.stdout)
+            elif pick == "export-default":
+                _show_header("导出格式默认")
+                print(f"{_DIM}笔记/素材任务成功后，自动把转写导出为这些格式（确定性渲染，不耗 LLM）。srt/vtt 是字幕文件，json 是结构化转写。{_RESET}", file=sys.stdout)
+                cur = get_app_config().get("default_export_formats") or []
+                choices = [
+                    {"name": "srt（字幕，标准 SubRip）", "value": "srt"},
+                    {"name": "vtt（字幕，WebVTT）", "value": "vtt"},
+                    {"name": "json（结构化转写）", "value": "json"},
+                ]
+                picked = inq.checkbox(
+                    message="选择导出格式（空格勾选，留空 = 不自动导出）",
+                    choices=[{"name": c["name"], "value": c["value"], "checked": c["value"] in cur} for c in choices],
+                    keybindings=_KB,
+                ).execute()
+                if picked:
+                    set_app_config("default_export_formats", list(picked))
+                    print(f"{_GREEN}✓ 已保存导出格式默认：{','.join(picked)}{_RESET}", file=sys.stdout)
+                else:
+                    remove_app_config("default_export_formats")
+                    print(f"{_YELLOW}⚠ 已清除导出格式默认（任务成功不再自动导出）{_RESET}", file=sys.stdout)
     except KeyboardInterrupt:
         return  # 左键/Ctrl-C → 返回主菜单
+
+
+def _wizard_data(inq) -> None:
+    """setup ④ 数据管理：查看任务列表 / 清理单任务 / 全局清理。"""
+    try:
+        while True:
+            _show_header("④ 数据管理")
+            pick = inq.select(
+                message="选择操作（← 返回）",
+                choices=[
+                    {"name": "查看任务列表（task_id | 标题 | 状态）", "value": "list"},
+                    {"name": "清理单个任务", "value": "cleanup-one"},
+                    {"name": "全局清理（清空所有任务产物）", "value": "cleanup-all"},
+                    {"name": "← 返回主菜单", "value": "back"},
+                ],
+                keybindings=_KB,
+            ).execute()
+            if pick == "back":
+                return
+            if pick == "list":
+                _wizard_data_list(inq)
+            elif pick == "cleanup-one":
+                _wizard_data_cleanup_one(inq)
+            else:
+                _wizard_data_cleanup_all(inq)
+    except KeyboardInterrupt:
+        return
+
+
+def _wizard_data_list(inq) -> None:
+    """列出全局索引里的任务（带语义标题/状态）。"""
+    from app.db.video_task_dao import list_tasks as _list
+
+    tasks = _list()
+    if not tasks:
+        print(f"{_DIM}暂无任务记录（尚未生成过笔记/素材）{_RESET}", file=sys.stdout)
+        _press_any_key()
+        return
+    _show_header("任务列表")
+    for t in tasks:
+        created = (t.get("created_at") or "")[:16]
+        title = (t.get("title") or "（无标题）")[:50]
+        print(f"  {t['task_id'][:8]}  {t.get('status','')[:9]:9}  {created}  {title}", file=sys.stdout)
+    print(f"{_DIM}共 {len(tasks)} 个任务（task_id 显示前 8 位）{_RESET}", file=sys.stdout)
+    _press_any_key()
+
+
+def _wizard_data_cleanup_one(inq) -> None:
+    """选一个任务 → 确认清理（默认保留最终笔记）。"""
+    from app.db.video_task_dao import list_tasks as _list
+    from app.utils.task_manifest import cleanup_task_files, list_task_files
+
+    tasks = _list()
+    if not tasks:
+        print(f"{_DIM}暂无任务记录{_RESET}", file=sys.stdout)
+        _press_any_key()
+        return
+    choices = []
+    for t in tasks:
+        title = (t.get("title") or "（无标题）")[:40]
+        status = t.get("status") or ""
+        choices.append(
+            {"name": f"{t['task_id'][:8]}  [{status[:8]}]  {title}", "value": t["task_id"]}
+        )
+    choices.append({"name": "← 取消", "value": "back"})
+    tid = inq.select(message="选择要清理的任务（← 取消）", choices=choices, keybindings=_KB).execute()
+    if tid == "back":
+        return
+
+    files = list_task_files(tid)
+    print(f"{_DIM}该任务占用：{len(files.get('existing', []))} 个文件/目录{_RESET}", file=sys.stdout)
+    include_note = inq.confirm(
+        message="连最终笔记一起删？[n=保留笔记]",
+        default=False,
+        keybindings=_KB,
+    ).execute()
+    if not inq.confirm(
+        message=f"确认清理任务 {tid[:8]}？{'（连笔记）' if include_note else '（保留笔记）'}",
+        default=False,
+        keybindings=_KB,
+    ).execute():
+        print(f"{_YELLOW}已取消清理{_RESET}", file=sys.stdout)
+        return
+    r = cleanup_task_files(tid, include_note=include_note)
+    print(
+        f"{_GREEN}✓ 已清理：删除 {len(r.get('deleted', []))} 项，"
+        f"笔记{'保留' if r.get('note_kept') else '已删'}{_RESET}",
+        file=sys.stdout,
+    )
+    _press_any_key()
+
+
+def _wizard_data_cleanup_all(inq) -> None:
+    """全局清理（恢复出厂）。"""
+    from app.utils.task_manifest import cleanup_all_files
+
+    _show_header("全局清理")
+    print(
+        f"{_YELLOW}⚠ 将清空 note_results/（所有任务产物）、static/screenshots/、logs/。{_RESET}",
+        file=sys.stdout,
+    )
+    include_config = inq.confirm(message="连 config/（LLM key / cookie）一起清？", default=False, keybindings=_KB).execute()
+    include_models = inq.confirm(message="连 models/（已下载模型）一起清？", default=False, keybindings=_KB).execute()
+    if not inq.confirm(message="确认全局清理？此操作不可撤销", default=False, keybindings=_KB).execute():
+        print(f"{_YELLOW}已取消全局清理{_RESET}", file=sys.stdout)
+        return
+    r = cleanup_all_files(include_config=include_config, include_models=include_models)
+    print(f"{_GREEN}✓ 全局清理完成{_RESET}", file=sys.stdout)
+    _press_any_key()
+
+
+def _press_any_key() -> None:
+    try:
+        input("（按回车返回）", )
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 
 def _fallback_test_and_default(pid: str) -> None:
@@ -659,7 +860,7 @@ def _fallback_test_and_default(pid: str) -> None:
 
 def _setup_cli_fallback() -> None:
     """无 InquirerPy 时的纯文本兜底向导（同功能，输入编号选择）。"""
-    print("=== BiliNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
+    print("=== VideoNote-MCP 配置（纯文本模式） ===", file=sys.stdout)
 
     provs = ProviderService.get_all_providers_safe()
     if provs:
@@ -688,15 +889,20 @@ def _setup_cli_fallback() -> None:
             print(f"   ✓ 已新增 → id={new_id}", file=sys.stdout)
 
     print("\n② 语音转写引擎：", file=sys.stdout)
-    print("   1) fast-whisper  2) groq  3) bcut  4) kuaishou  5) mlx-whisper", file=sys.stdout)
-    t = _ask("   选择 [1-5]", default="1")
-    engines = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
-    eng = engines[int(t) - 1] if t.isdigit() and 1 <= int(t) <= 5 else "fast-whisper"
+    print("   1) fast-whisper  2) groq  3) bcut  4) kuaishou  5) mlx-whisper  6) funasr（中文最优，VAD+标点）", file=sys.stdout)
+    t = _ask("   选择 [1-6]", default="1")
+    engines = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper", "funasr")
+    eng = engines[int(t) - 1] if t.isdigit() and 1 <= int(t) <= 6 else "fast-whisper"
     size = None
     if eng in ("fast-whisper", "mlx-whisper"):
         size = _ask("   模型尺寸（tiny/base/small/medium/large-v3/large-v3-turbo）", default="small")
         if size not in _WHISPER_SIZES:
             size = "small"
+    if eng == "funasr":
+        import importlib.util
+
+        if importlib.util.find_spec("funasr") is None:
+            print("   ⚠ 未装 funasr：`uvx --from ... --with funasr --with torch` 安装", file=sys.stdout)
     TranscriberConfigManager().update_config(eng, size)
     print(f"   ✓ 已切换 {eng} / {size}", file=sys.stdout)
     if eng == "fast-whisper" and _ask(f"   下载 whisper-{size}？[y/N]", default="N").lower() == "y":
@@ -704,6 +910,21 @@ def _setup_cli_fallback() -> None:
             _download_whisper(size)
         except Exception as e:
             print(f"   ⚠ 下载失败：{e}", file=sys.stdout)
+    print("   音频预处理：转写前把音频归一化为 16kHz mono wav，超长自动分块（零额外依赖）", file=sys.stdout)
+    cur_pre = bool(TranscriberConfigManager().get_config().get("enable_preprocess", False))
+    pre = _ask(f"   启用音频预处理？[y/N]（当前 {'开' if cur_pre else '关'}）", default="Y" if cur_pre else "N").lower() == "y"
+    TranscriberConfigManager().update_config(eng, enable_preprocess=bool(pre))
+    print(f"   ✓ 音频预处理：{'开' if pre else '关'}", file=sys.stdout)
+    print("   说话人分离：pyannote 给转写标说话人（重依赖：torch + HF_TOKEN + 模型授权）", file=sys.stdout)
+    cur_dia = bool(TranscriberConfigManager().get_config().get("diarization", False))
+    dia = _ask(f"   启用说话人分离？[y/N]（当前 {'开' if cur_dia else '关'}）", default="Y" if cur_dia else "N").lower() == "y"
+    if dia:
+        import importlib.util
+
+        if importlib.util.find_spec("pyannote") is None:
+            print("   ⚠ 未装 pyannote：`uvx --from ... --with pyannote.audio --with torch` 安装", file=sys.stdout)
+    TranscriberConfigManager().update_config(eng, diarization=bool(dia))
+    print(f"   ✓ 说话人分离：{'开' if dia else '关'}", file=sys.stdout)
 
     print("\n③ 其他（视频理解默认 / 评论·弹幕整合默认 / 笔记默认）：", file=sys.stdout)
     print("   视频理解把画面按间隔抽帧发给多模态 LLM（需 qwen-vl / gpt-4o 等；会下载整个视频、比纯转写慢）", file=sys.stdout)
@@ -730,7 +951,7 @@ def _setup_cli_fallback() -> None:
         lim = 20
     set_app_config("comments_limit", lim)
     print(f"   ✓ 评论/弹幕整合默认：{'开' if on else '关'} / {lim}条", file=sys.stdout)
-    print("   需 SESSDATA（`bilinote-mcp login bilibili`），没配则评论拿不到", file=sys.stdout)
+    print("   需 SESSDATA（`videonote login bilibili`），没配则评论拿不到", file=sys.stdout)
     print("   笔记默认：不传 style/screenshot 参数时用这里的默认值；AGENT 直接写笔记绕过配置的 LLM", file=sys.stdout)
     _NOTE_STYLES = [
         "minimal 精简",
@@ -760,13 +981,61 @@ def _setup_cli_fallback() -> None:
     ad = _ask("   默认用 AGENT 直接写笔记（不走配置 LLM）？[y/N]", default="N").lower() == "y"
     set_app_config("agent_direct", bool(ad))
     print(f"   ✓ 笔记默认：风格 {style} / 截图 {'开' if ss else '关'} / AGENT直接写 {'开' if ad else '关'}", file=sys.stdout)
+    print("   导出格式默认：任务成功后自动把转写导出为纯格式（确定性渲染，不耗 LLM）", file=sys.stdout)
+    print("     1) srt（字幕，标准 SubRip）  2) vtt（字幕，WebVTT）  3) json（结构化转写）", file=sys.stdout)
+    print("     输入逗号分隔编号，如 1,3；留空 = 不自动导出", file=sys.stdout)
+    cur_ex = get_app_config().get("default_export_formats") or []
+    _EXPORT_OPTS = ["srt", "vtt", "json"]
+    ex_sel = _ask(f"   选择导出格式（当前 {','.join(cur_ex) if cur_ex else '无'}）", default="")
+    if ex_sel.strip():
+        picked = []
+        for part in ex_sel.split(","):
+            part = part.strip()
+            if part.isdigit() and 1 <= int(part) <= 3:
+                picked.append(_EXPORT_OPTS[int(part) - 1])
+        if picked:
+            set_app_config("default_export_formats", picked)
+            print(f"   ✓ 已保存导出格式默认：{','.join(picked)}", file=sys.stdout)
+    elif cur_ex:
+        remove_app_config("default_export_formats")
+        print("   ✓ 已清除导出格式默认（任务成功不再自动导出）", file=sys.stdout)
+
+    print("\n④ 数据管理（查看 / 清理任务产物）：", file=sys.stdout)
+    try:
+        from app.db.video_task_dao import list_tasks as _list_tasks
+
+        tasks = _list_tasks()
+        if not tasks:
+            print("   暂无任务记录（尚未生成过笔记/素材）", file=sys.stdout)
+        else:
+            print(f"   共 {len(tasks)} 个任务：", file=sys.stdout)
+            for i, t in enumerate(tasks, 1):
+                title = (t.get("title") or "（无标题）")[:40]
+                status = (t.get("status") or "")[:9]
+                print(f"     {i}) {t['task_id'][:8]}  [{status}]  {title}", file=sys.stdout)
+            sel = _ask(f"   清理哪个任务？[1-{len(tasks)}，0=跳过]", default="0")
+            if sel.isdigit() and 1 <= int(sel) <= len(tasks):
+                tid = tasks[int(sel) - 1]["task_id"]
+                include_note = _ask(f"   连最终笔记一起删？[y/N]（{tid[:8]}）", default="N").lower() == "y"
+                if _ask(f"   确认清理 {tid[:8]}？[y/N]", default="N").lower() == "y":
+                    from app.utils.task_manifest import cleanup_task_files
+
+                    r = cleanup_task_files(tid, include_note=include_note)
+                    print(f"   ✓ 已清理：删除 {len(r.get('deleted', []))} 项，笔记{'保留' if r.get('note_kept') else '已删'}", file=sys.stdout)
+    except Exception as e:
+        print(f"   ⚠ 读取任务列表失败：{e}", file=sys.stdout)
+    if _ask("   全局清理（清空所有任务产物）？[y/N]", default="N").lower() == "y":
+        from app.utils.task_manifest import cleanup_all_files
+
+        cleanup_all_files()
+        print("   ✓ 已全局清理", file=sys.stdout)
 
     print("\n=== 配置完成 ===", file=sys.stdout)
 
 
 def _providers_cli(argv) -> None:
     parser = argparse.ArgumentParser(
-        prog="bilinote-mcp providers",
+        prog="videonote providers",
         description="在终端管理 LLM 供应商（key 不经过 agent 对话，避免泄露给 agent 的 LLM 上游）",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -836,13 +1105,13 @@ def _providers_cli(argv) -> None:
         print(f"已新增 {opts.name} → id={new_id}", file=sys.stdout)
 
 
-_TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper")
+_TRANSCRIBER_ENGINES = ("fast-whisper", "groq", "bcut", "kuaishou", "mlx-whisper", "funasr")
 
 
 def _transcriber_cli(argv) -> None:
-    """`bilinote-mcp transcriber ...`：在终端管理语音转写引擎。"""
+    """`videonote transcriber ...`：在终端管理语音转写引擎。"""
     parser = argparse.ArgumentParser(
-        prog="bilinote-mcp transcriber",
+        prog="videonote transcriber",
         description="在终端管理语音转写引擎（fast-whisper 本地 / groq / bcut / kuaishou / mlx-whisper）",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -854,6 +1123,10 @@ def _transcriber_cli(argv) -> None:
     p_dl = sub.add_parser("download", help="下载本地 whisper 模型")
     p_dl.add_argument("size", choices=_WHISPER_SIZES)
     p_dl.add_argument("--engine", default="fast-whisper", choices=("fast-whisper", "mlx-whisper"), help="fast-whisper（默认）或 mlx-whisper（macOS）")
+    p_pre = sub.add_parser("preprocess", help="音频预处理开关（16kHz 归一 + 超长分块）")
+    p_pre.add_argument("state", choices=("on", "off"), help="on=启用 / off=关闭")
+    p_dia = sub.add_parser("diarization", help="说话人分离开关（pyannote 可选）")
+    p_dia.add_argument("state", choices=("on", "off"), help="on=启用 / off=关闭")
 
     opts = parser.parse_args(argv)
     mgr = TranscriberConfigManager()
@@ -862,6 +1135,8 @@ def _transcriber_cli(argv) -> None:
         ready = mgr.is_model_ready()
         print(f"当前引擎: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
         print(f"就绪: {'✓ ready' if ready['ready'] else '✗ ' + ready['reason']}", file=sys.stdout)
+        print(f"音频预处理: {'开' if cfg.get('enable_preprocess') else '关'}", file=sys.stdout)
+        print(f"说话人分离: {'开' if cfg.get('diarization') else '关'}", file=sys.stdout)
         print(f"可选引擎: {', '.join(_TRANSCRIBER_ENGINES)}", file=sys.stdout)
         print(f"whisper 尺寸: {', '.join(_WHISPER_SIZES)}", file=sys.stdout)
     elif opts.cmd == "set":
@@ -870,7 +1145,7 @@ def _transcriber_cli(argv) -> None:
         cfg = mgr.update_config(opts.engine, opts.size)
         print(f"已切换: {cfg['transcriber_type']} / {cfg['whisper_model_size']}", file=sys.stdout)
         if opts.engine == "fast-whisper":
-            print(f"（本地模型还需下载：bilinote-mcp transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
+            print(f"（本地模型还需下载：videonote transcriber download {cfg['whisper_model_size']}）", file=sys.stdout)
     elif opts.cmd == "download":
         try:
             if opts.engine == "mlx-whisper":
@@ -880,10 +1155,37 @@ def _transcriber_cli(argv) -> None:
         except Exception as e:
             print(f"✗ 下载失败: {e}（可稍后重试或换小尺寸）", file=sys.stderr)
             sys.exit(1)
+    elif opts.cmd == "preprocess":
+        on = opts.state == "on"
+        cfg = mgr.update_config(mgr.get_config()["transcriber_type"], enable_preprocess=on)
+        print(f"音频预处理: {'开' if cfg.get('enable_preprocess') else '关'}", file=sys.stdout)
+        if on:
+            print("（转写前会先把音频归一化为 16kHz mono wav；超长自动分块）", file=sys.stdout)
+    elif opts.cmd == "diarization":
+        on = opts.state == "on"
+        cfg = mgr.update_config(mgr.get_config()["transcriber_type"], diarization=on)
+        print(f"说话人分离: {'开' if cfg.get('diarization') else '关'}", file=sys.stdout)
+        if on:
+            import importlib.util
+
+            if importlib.util.find_spec("pyannote") is None:
+                print(
+                    f"⚠ 当前环境未装 pyannote（可选依赖）。",
+                    file=sys.stdout,
+                )
+                print(
+                    f"  `uv tool install --from git+https://github.com/HuangYincan/VideoNote-MCP videonote "
+                    f"--with pyannote.audio --with torch`，或用 `uvx --from ... --with pyannote.audio --with torch` 运行。",
+                    file=sys.stdout,
+                )
+                print(
+                    "  另需 HF_TOKEN 并在 huggingface.co 同意 pyannote 模型授权（diarize_media 时用）。",
+                    file=sys.stdout,
+                )
 
 
 def _login_cli(argv) -> None:
-    """`bilinote-mcp login [bilibili]`：扫码登录 B 站，自动获取并保存 SESSDATA（AI 字幕用）。"""
+    """`videonote login [bilibili]`：扫码登录 B 站，自动获取并保存 SESSDATA（AI 字幕用）。"""
     if argv and argv[0] != "bilibili":
         print(f"未知平台: {argv[0]}（当前支持 bilibili）", file=sys.stderr)
         sys.exit(2)
@@ -977,7 +1279,7 @@ def _login_cli(argv) -> None:
                 print("已扫码，请在手机上确认登录…", file=sys.stdout)
                 last_status = 86090
             elif st == 86038:
-                print(f"{_YELLOW}二维码已过期，请重新运行 `bilinote-mcp login bilibili`{_RESET}", file=sys.stdout)
+                print(f"{_YELLOW}二维码已过期，请重新运行 `videonote login bilibili`{_RESET}", file=sys.stdout)
                 try:
                     input("（按回车返回）", )
                 except (EOFError, KeyboardInterrupt):
@@ -987,9 +1289,66 @@ def _login_cli(argv) -> None:
         print("（已取消）", file=sys.stdout)
 
 
+def _export_cli(argv) -> None:
+    """`videonote export ...`：把已完成任务的转写导出为纯格式（srt/vtt/json）。"""
+    parser = argparse.ArgumentParser(
+        prog="videonote export",
+        description="把已完成任务的转写导出为字幕/JSON（确定性渲染，不耗 LLM）",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_list = sub.add_parser("list", help="列出支持的导出格式")
+    p_run = sub.add_parser("export", help="导出指定任务（<task_id> 必填）")
+    p_run.add_argument("task_id", help="已完成任务的 task_id（generate_note 返回）")
+    p_run.add_argument("--format", default=None, help="逗号分隔的格式（srt,vtt,json），缺省取 setup 默认")
+    p_run.add_argument("--out-dir", default=None, help="输出目录（缺省 note_results/{task_id}/）")
+
+    opts = parser.parse_args(argv)
+    if opts.cmd == "list":
+        print("支持的导出格式（确定性渲染，不耗 LLM）：")
+        for f, desc in (("srt", "字幕，标准 SubRip"), ("vtt", "字幕，WebVTT"), ("json", "结构化转写")):
+            print(f"  - {f}: {desc}")
+        return
+
+    # 缺省格式：命令行 > setup 配置 > 全三种
+    formats = None
+    if opts.format:
+        formats = [f.strip() for f in opts.format.split(",") if f.strip()]
+    if formats is None:
+        formats = get_app_config().get("default_export_formats") or ["srt", "vtt", "json"]
+
+    from videonote_mcp.export import export_transcript
+
+    note_output_dir = Path(os.environ.get("NOTE_OUTPUT_DIR", "note_results"))
+    task_dir = note_output_dir / opts.task_id
+    result_path = task_dir / "result.json"
+    if not result_path.exists():
+        print(f"✗ 找不到任务 {opts.task_id} 的结果文件（{result_path}），任务可能未成功", file=sys.stderr)
+        sys.exit(1)
+    import json as _json
+
+    transcript = None
+    try:
+        transcript = _json.loads(result_path.read_text(encoding="utf-8")).get("transcript")
+    except Exception:
+        pass
+    if not transcript:
+        print(f"✗ 任务 {opts.task_id} 没有转写结果（可能未到转写阶段）", file=sys.stderr)
+        sys.exit(1)
+
+    out_dir = opts.out_dir or str(task_dir / "gen")
+    written = export_transcript(transcript, formats=formats, out_dir=out_dir, task_id=opts.task_id)
+    if not written:
+        print(f"✗ 没有成功导出任何格式（请求: {formats}）", file=sys.stderr)
+        sys.exit(1)
+    print(f"✓ 已导出 {len(written)} 个格式（task_id={opts.task_id}）：")
+    for fmt, uri in written.items():
+        print(f"  - {fmt}: {uri}")
+
+
 def main() -> None:
-    """入口：providers / setup / transcriber / login 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
-    known = ("providers", "setup", "transcriber", "login")
+    """入口：providers / setup / transcriber / login / export 走轻量 CLI；**无参数**时才是 MCP server（stdio）。"""
+    known = ("providers", "setup", "transcriber", "login", "export")
     if len(sys.argv) > 1 and sys.argv[1] in known:
         cmd = sys.argv[1]
         if cmd == "providers":
@@ -998,17 +1357,19 @@ def main() -> None:
             _setup_cli()
         elif cmd == "login":
             _login_cli(sys.argv[2:])
+        elif cmd == "export":
+            _export_cli(sys.argv[2:])
         else:
             _transcriber_cli(sys.argv[2:])
         return
     if len(sys.argv) > 1:
         # 未知参数（如 uvx 选项写错位置）→ 报错而不是静默启动 MCP server
         print(f"未知子命令: {sys.argv[1]}", file=sys.stderr)
-        print(f"用法: bilinote-mcp {' | '.join(known)} ...", file=sys.stderr)
+        print(f"用法: videonote {' | '.join(known)} ...", file=sys.stderr)
         print("（MCP server 模式由客户端无参数启动，不要手动传参）", file=sys.stderr)
         sys.exit(2)
     # MCP 模式（无参数，stdio 客户端启动）：懒加载完整流水线（server.py）
-    from bilinote_mcp.server import main as _server_main
+    from videonote_mcp.server import main as _server_main
 
     _server_main()
 

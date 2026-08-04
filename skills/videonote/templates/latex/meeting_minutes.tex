@@ -1,0 +1,53 @@
+%% style: meeting_minutes
+%% desc: 会议纪要风 —— 结论先行、议题/讨论/行动项三明治、决策记录
+%% 用法：AGENT 读此模板，以 MD 底稿为信息源、按此结构生成 note.tex（不直接替换占位符）。
+%% 占位符 %%TITLE%% / %%CONTENT%% 标出内容插入点。
+\documentclass[11pt]{article}
+\usepackage[UTF8, scheme=plain]{ctex}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+
+\title{\textbf{会议纪要：%%TITLE%%}}
+\author{AI 笔记}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+%%CONTENT%%（一句话结论：本次核心结论/决策）
+\end{abstract}
+
+\section{会议概要}
+%% 时间/主题/参与方（可从底稿提取；无则简写）
+
+\section{核心结论}
+%% 结论先行：本次最重要的 3-5 个决定/结论
+
+\section{议题讨论}
+% 每个议题一段：
+\subsection{议题一}
+%% 背景 → 各方观点 → 讨论要点
+\subsection{议题二}
+%% ...
+
+\section{行动项}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{事项} & \textbf{负责人} & \textbf{截止} & \textbf{备注} \\
+\midrule
+%% 行动项逐行填入（从底稿提炼）
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{遗留问题}
+%% 未决/待跟进事项
+
+\end{document}

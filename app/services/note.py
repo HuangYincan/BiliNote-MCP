@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -25,10 +26,10 @@ from app.exceptions.provider import ProviderError
 from app.gpt.base import GPT
 from app.gpt.gpt_factory import GPTFactory
 from app.models.audio_model import AudioDownloadResult
-from app.models.gpt_model import GPTSource
 from app.models.model_config import ModelConfig
 from app.models.notes_model import AudioDownloadResult, NoteResult
 from app.models.transcriber_model import TranscriptResult, TranscriptSegment
+from app.services import pipeline
 from app.services.constant import SUPPORT_PLATFORM_MAP
 from app.services.provider import ProviderService
 from app.transcriber.base import Transcriber
@@ -63,6 +64,17 @@ logger.setLevel(logging.INFO)
 
 
 from app.exceptions.task import TaskCancelledError, check_cancel as _check_cancel
+
+
+def task_dirs(task_id: str):
+    """每任务一个统一文件夹：{task_dir}/raw（下载媒体）+ {task_dir}/gen（生成物）+ 控制文件。
+
+    数据层重构：不再有扁平 {task_id}.json / dl_{task_id} 等散落文件，
+    一个任务的所有内容都在 note_results/{task_id}/ 下。
+    返回 (task_dir, raw_dir, gen_dir)。
+    """
+    task_dir = NOTE_OUTPUT_DIR / str(task_id)
+    return task_dir, task_dir / "raw", task_dir / "gen"
 
 
 def _extract_note_title(markdown: str) -> Optional[str]:
@@ -162,6 +174,10 @@ class NoteGenerator:
 
         try:
             logger.info(f"开始生成笔记 (task_id={task_id})")
+            # 重置实例状态：NoteGenerator 若被复用跑第二个任务，不清会串上一个任务的数据
+            self.video_path = None
+            self.video_img_urls = []
+            self.transcriber = None
             self._update_status(task_id, TaskStatus.PARSING)
 
             # 获取下载器与 GPT 实例
@@ -171,19 +187,25 @@ class NoteGenerator:
             gpt = None if material_only else self._get_gpt(model_name, provider_id)
             _check_cancel(cancel_event)  # 阶段边界：可取消点
 
-            # 缓存文件路径
-            audio_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_audio.json"
-            transcript_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_transcript.json"
-            markdown_cache_file = NOTE_OUTPUT_DIR / f"{task_id}_markdown.md"
+            # 每任务统一文件夹：{task_id}/raw（下载）+ {task_id}/gen（生成）+ 控制文件
+            task_dir, raw_dir, gen_dir = task_dirs(task_id)
+            gen_dir.mkdir(parents=True, exist_ok=True)
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            # 缓存文件路径（进 gen/）
+            audio_cache_file = gen_dir / "audio.json"
+            transcript_cache_file = gen_dir / "transcript.json"
+            markdown_cache_file = gen_dir / "note.md"
             # 记录主要产物路径到 manifest（尽力而为，失败不阻断生成）
             record_task_paths(task_id, [
+                task_dir,
+                raw_dir,
+                gen_dir,
                 audio_cache_file,
                 transcript_cache_file,
                 markdown_cache_file,
-                NOTE_OUTPUT_DIR / f"dl_{task_id}",
-                NOTE_OUTPUT_DIR / f"{task_id}.status.json",
-                NOTE_OUTPUT_DIR / f"{task_id}.json",
-                NOTE_OUTPUT_DIR / f"{task_id}.gpt.checkpoint.json",
+                task_dir / "status.json",
+                task_dir / "result.json",
+                gen_dir / "checkpoint.json",
             ])
             # 1. 获取字幕/转写：优先缓存 → 平台字幕 → 音频转写
             transcript = None
@@ -257,10 +279,19 @@ class NoteGenerator:
                 comments_danmaku = self._fetch_comments_danmaku(video_url, comments_limit)
             _check_cancel(cancel_event)  # 阶段边界：可取消点
 
-            # 3.0 material_only：只组装素材包返回（转写/帧/评论/音视频路径），不调 LLM、不写库
+            # 3.0 material_only：只组装素材包返回（转写/帧/评论/音视频路径），不调 LLM；仍写全局索引
             if material_only:
                 material = self._build_note_material(task_id, audio_meta, transcript, comments_danmaku)
                 self._update_status(task_id, TaskStatus.SUCCESS)
+                # 修复：material 模式任务也写入全局索引（含语义标题）
+                self._save_metadata(
+                    video_id=audio_meta.video_id,
+                    platform=platform,
+                    task_id=task_id,
+                    title=(audio_meta.title if audio_meta else None),
+                    status="SUCCESS",
+                    note_dir=str(task_dir),
+                )
                 logger.info(f"素材准备完成 (task_id={task_id})")
                 return NoteResult(markdown="", transcript=transcript, audio_meta=audio_meta, material=material)
 
@@ -281,21 +312,11 @@ class NoteGenerator:
             )
 
             # 4. 截图 & 链接替换
-            assets_dir = None
-            _note_dir = None
-            # 文件夹名优先用 LLM 生成的笔记标题（markdown 的 H1），更准；回退视频标题
+            # 数据层重构：生成物统一进 {task_id}/gen/（note.md 恒写，Assets/ 在 gen/Assets/）
+            assets_dir = gen_dir / "Assets"
+            _note_dir = gen_dir
+            # 文件夹名优先用 LLM 生成的笔记标题（markdown 的 H1），更准；回退视频标题（用于语义元数据）
             folder_title = _extract_note_title(markdown) or (audio_meta.title if audio_meta else None)
-            if _format and "screenshot" in _format:
-                # 截图模式：note.md 与 Assets/ 同层、相对引用；目录用户可指定
-                if notes_dir:
-                    # 一篇笔记一个文件夹：<notes_dir>/<标题>/（内含 note.md + Assets/）
-                    _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
-                else:
-                    _note_dir = NOTE_OUTPUT_DIR / task_id
-                assets_dir = _note_dir / "Assets"
-            elif notes_dir:
-                # 用户指定了输出目录（即使不插图片），每篇笔记一个文件夹（以标题命名）
-                _note_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
             if _format:
                 markdown = self._post_process_markdown(
                     markdown=markdown,
@@ -309,17 +330,46 @@ class NoteGenerator:
 
             markdown = prepend_source_link(markdown, str(video_url))
 
-            # 4.5 写出 note.md（截图模式 或 用户指定了输出目录时）
-            if _note_dir is not None:
-                _note_dir.mkdir(parents=True, exist_ok=True)
-                (_note_dir / "note.md").write_text(markdown, encoding="utf-8")
-                logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
-                record_task_paths(task_id, [_note_dir, _note_dir / "note.md"])
+            # 4.5 写出 note.md 到 gen/（恒写；用户指定 notes_dir 时额外写便携副本）
+            _note_dir.mkdir(parents=True, exist_ok=True)
+            (_note_dir / "note.md").write_text(markdown, encoding="utf-8")
+            logger.info(f"笔记已写出: {_note_dir / 'note.md'}")
+            record_task_paths(task_id, [_note_dir, _note_dir / "note.md"])
+            if notes_dir:
+                # 便携模式：额外写一份 <notes_dir>/<标题>/note.md（以标题命名的可读副本）
+                try:
+                    portable_dir = Path(notes_dir) / _note_dir_name(folder_title, task_id, Path(notes_dir))
+                    portable_dir.mkdir(parents=True, exist_ok=True)
+                    (portable_dir / "note.md").write_text(markdown, encoding="utf-8")
+                    record_task_paths(task_id, [portable_dir, portable_dir / "note.md"])
+                    # 便携副本的截图：把 gen/Assets/ 一并拷贝，保证相对引用 Assets/... 可读
+                    assets_src = gen_dir / "Assets"
+                    if assets_src.exists():
+                        try:
+                            assets_dst = portable_dir / "Assets"
+                            if assets_dst.exists():
+                                shutil.rmtree(assets_dst)
+                            shutil.copytree(assets_src, assets_dst)
+                            record_task_paths(task_id, [assets_dst])
+                        except Exception as e2:
+                            logger.warning(f"拷贝便携笔记截图失败: {e2}")
+                except Exception as e:
+                    logger.warning(f"写便携笔记副本失败: {e}")
 
-            # 5. 保存记录到数据库
+            # 5. 保存记录到数据库（全局索引，含语义标题/状态/简介）
             _check_cancel(cancel_event)  # 阶段边界：可取消点
             self._update_status(task_id, TaskStatus.SAVING)
-            self._save_metadata(video_id=audio_meta.video_id, platform=platform, task_id=task_id)
+            semantic_title = folder_title or (audio_meta.title if audio_meta else None) or ""
+            summary = (transcript.full_text or "")[:200] if transcript else ""
+            self._save_metadata(
+                video_id=audio_meta.video_id,
+                platform=platform,
+                task_id=task_id,
+                title=semantic_title,
+                status="SUCCESS",
+                summary=summary,
+                note_dir=str(task_dir),
+            )
 
             # 6. 完成
             self._update_status(task_id, TaskStatus.SUCCESS)
@@ -360,8 +410,13 @@ class NoteGenerator:
             logger.error(f"未找到支持的转写器：{self.transcriber_type}")
             raise Exception(f"不支持的转写器：{self.transcriber_type}")
 
-        logger.info(f"使用转写器：{self.transcriber_type}")
-        return get_transcriber(transcriber_type=self.transcriber_type)
+        logger.info(f"使用转写器：{self.transcriber_type} / {self.model_size}")
+        # 必须把配置的模型尺寸传下去：get_transcriber 不再读环境变量优先，
+        # 否则 set_transcriber 配置的 large-v3 会被 WHISPER_MODEL_SIZE=tiny 覆盖。
+        return get_transcriber(
+            transcriber_type=self.transcriber_type,
+            model_size=self.model_size,
+        )
 
     def _get_gpt(self, model_name: Optional[str], provider_id: Optional[str]) -> GPT:
         """
@@ -419,11 +474,20 @@ class NoteGenerator:
             return
 
         NOTE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        status_file = NOTE_OUTPUT_DIR / f"{task_id}.status.json"
-        print(f"写入状态文件: {status_file} 当前状态: {status}")
+        task_dir, _, _ = task_dirs(task_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        status_file = task_dir / "status.json"
         data = {"status": status.value if isinstance(status, TaskStatus) else status}
         if message:
             data["message"] = message
+
+        # 同步全局索引（video_tasks.status）——尽力而为，失败不阻断
+        try:
+            from app.db.video_task_dao import update_task_status
+
+            update_task_status(task_id, data["status"], message=message or "")
+        except Exception as e:
+            logger.debug(f"同步任务状态到全局索引失败: {e}")
 
         try:
             # First create a temporary file
@@ -489,12 +553,14 @@ class NoteGenerator:
         :param grid_size: 缩略图网格尺寸
         :return: AudioDownloadResult 对象
         """
-        task_id = audio_cache_file.stem.split("_")[0]
+        # audio_cache_file 现为 {task_dir}/gen/audio.json → task_dir 是它的 parent.parent
+        task_dir = audio_cache_file.parent.parent
+        task_id = task_dir.name
         self._update_status(task_id, status_phase)
 
-        # 每个任务独立的下载子目录：同一视频并发任务不再写同一个 {video_id}.mp4/.mp3，
-        # 下载器/转写器/事件清理都只在自己的 dl_{task_id} 里活动，互不干扰
-        dl_dir = output_path or str(NOTE_OUTPUT_DIR / f"dl_{task_id}")
+        # 每任务下载目录 = {task_dir}/raw（替代旧 dl_{task_id}）
+        dl_dir = output_path or str(task_dir / "raw")
+        Path(dl_dir).mkdir(parents=True, exist_ok=True)
         # 记录下载目录与音频缓存到 manifest（尽力而为）
         record_task_paths(task_id, [dl_dir, audio_cache_file])
 
@@ -609,15 +675,21 @@ class NoteGenerator:
             except Exception as e:
                 logger.warning(f"加载转写缓存失败，将重新获取：{e}")
 
-        # 1. 先尝试获取平台字幕
+        # 1. 先尝试获取平台字幕（委托 pipeline 步骤层，返回 asdict dict）
         logger.info("尝试获取平台字幕...")
         try:
-            transcript = downloader.download_subtitles(video_url)
-            if transcript and transcript.segments:
+            data = pipeline.fetch_subtitles(video_url)
+            if data:
+                transcript = TranscriptResult(
+                    language=data.get("language"),
+                    full_text=data["full_text"],
+                    segments=[TranscriptSegment(**seg) for seg in data.get("segments", [])],
+                    raw=data.get("raw"),
+                )
                 logger.info(f"成功获取平台字幕，共 {len(transcript.segments)} 段")
-                # 缓存结果
+                # 缓存结果（pipeline 返回的 asdict dict，与 asdict(transcript) 等价）
                 transcript_cache_file.write_text(
-                    json.dumps(asdict(transcript), ensure_ascii=False, indent=2),
+                    json.dumps(data, ensure_ascii=False, indent=2),
                     encoding="utf-8"
                 )
                 return transcript
@@ -648,7 +720,8 @@ class NoteGenerator:
         :param status_phase: 对应的状态枚举，如 TaskStatus.TRANSCRIBING
         :return: TranscriptResult 对象
         """
-        task_id = transcript_cache_file.stem.split("_")[0]
+        # transcript_cache_file 现为 {task_dir}/gen/transcript.json → task_id 是 parent.parent.name
+        task_id = transcript_cache_file.parent.parent.name
         self._update_status(task_id, status_phase)
 
         # 已有缓存，尝试加载
@@ -667,8 +740,16 @@ class NoteGenerator:
             self.transcriber = self._init_transcriber()
         try:
             logger.info("开始转写音频")
-            transcript = self.transcriber.transcript(file_path=audio_file)
-            transcript_cache_file.write_text(json.dumps(asdict(transcript), ensure_ascii=False, indent=2), encoding="utf-8")
+            # 委托 pipeline 步骤层（返回 asdict dict，与 asdict(transcript) 写缓存等价）
+            transcript_dict = pipeline.transcribe_audio(audio_file, transcriber=self.transcriber)
+            transcript_cache_file.write_text(json.dumps(transcript_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+            # 重建 TranscriptResult，保持返回类型一致（generate 下游仍按对象访问）
+            transcript = TranscriptResult(
+                language=transcript_dict.get("language"),
+                full_text=transcript_dict["full_text"],
+                segments=[TranscriptSegment(**seg) for seg in transcript_dict.get("segments", [])],
+                raw=transcript_dict.get("raw"),
+            )
             logger.info(f"转写并缓存成功 ({transcript_cache_file})")
             return transcript
         except Exception as exc:
@@ -707,25 +788,33 @@ class NoteGenerator:
         :param comments_danmaku: 观众评论与弹幕文本（可选，注入 prompt 供参考）
         :return: 生成的 Markdown 字符串
         """
-        task_id = markdown_cache_file.stem
+        # markdown_cache_file 现为 {task_dir}/gen/note.md → task_id 是 parent.parent.name
+        task_id = markdown_cache_file.parent.parent.name
         self._update_status(task_id, TaskStatus.SUMMARIZING)
 
-        source = GPTSource(
-            title=audio_meta.title,
-            segment=transcript.segments,
-            tags=audio_meta.raw_info.get("tags", []),
-            screenshot=screenshot,
-            video_img_urls=video_img_urls,
-            comments_danmaku=comments_danmaku,
-            link=link,
-            _format=formats,
-            style=style,
-            extras=extras,
-            checkpoint_key=task_id,
-        )
+        # 组装素材包，委托 pipeline 步骤层做 LLM 总结（GPTSource 构造收敛到 pipeline）
+        material = {
+            "title": audio_meta.title if audio_meta else None,
+            "transcript": asdict(transcript) if transcript else None,
+            "frames": list(self.video_img_urls),  # 已是 data URI，pipeline 兼容直接透传
+            "comments_danmaku": comments_danmaku,
+            "video_path": str(self.video_path) if self.video_path else None,
+            "audio_path": audio_meta.file_path if audio_meta else None,
+        }
 
         try:
-            markdown = gpt.summarize(source, cancel_event=cancel_event)
+            markdown = pipeline.summarize_material(
+                material,
+                gpt=gpt,
+                style=style,
+                extras=extras,
+                formats=formats,
+                screenshot=screenshot,
+                link=link,
+                tags=audio_meta.raw_info.get("tags", []) if (audio_meta and audio_meta.raw_info) else [],
+                checkpoint_key=task_id,
+                cancel_event=cancel_event,
+            )
             markdown_cache_file.write_text(markdown, encoding="utf-8")
             logger.info(f"GPT 总结并缓存成功 ({markdown_cache_file})")
             return markdown
@@ -740,48 +829,15 @@ class NoteGenerator:
         comments_limit: int,
     ) -> Optional[str]:
         """
-        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本。
+        抓取 B 站弹幕汇总与热门评论，拼成一段提示词文本（委托 pipeline 步骤层）。
 
         抓取失败（含 fetcher 模块缺失/接口异常）只记日志，返回 None，不阻断笔记生成。
-        BilibiliCommentFetcher 的 fetch_* 返回 {"ok": bool, ...}，绝无异常抛出。
 
         :param video_url: 视频链接
         :param comments_limit: 抓取评论条数上限
         :return: 拼接好的弹幕+评论文本；失败或无数据时返回 None
         """
-        try:
-            from app.downloaders.bilibili_comment import BilibiliCommentFetcher
-
-            fetcher = BilibiliCommentFetcher()
-        except Exception as exc:
-            logger.warning(f"BilibiliCommentFetcher 不可用，跳过弹幕/评论抓取: {exc}")
-            return None
-
-        parts: List[str] = []
-
-        danmaku = fetcher.fetch_danmaku(str(video_url))
-        if danmaku.get("ok"):
-            summary = danmaku.get("danmaku_summary") or ""
-            if summary:
-                parts.append(f"【弹幕】\n{summary}")
-        else:
-            logger.warning(f"弹幕抓取失败，跳过: {danmaku.get('error')}")
-
-        comments = fetcher.fetch_comments(str(video_url), limit=comments_limit)
-        if comments.get("ok"):
-            rows = comments.get("comments") or []
-            if rows:
-                lines = [
-                    f"- {c.get('user', '')}({c.get('likes', 0)}赞): {c.get('content', '')}"
-                    for c in rows
-                ]
-                parts.append("【热门评论】\n" + "\n".join(lines))
-        else:
-            logger.warning(f"评论抓取失败，跳过: {comments.get('error')}")
-
-        if not parts:
-            return None
-        return "\n\n".join(parts)
+        return pipeline.fetch_comments_danmaku(str(video_url), comments_limit)
 
     def _build_note_material(
         self,
@@ -803,7 +859,9 @@ class NoteGenerator:
 
         frames: List[str] = []
         if self.video_img_urls:
-            frames_dir = NOTE_OUTPUT_DIR / str(task_id) / "frames"
+            # 数据层重构：帧落盘到 {task_dir}/gen/frames/
+            task_dir, _, gen_dir = task_dirs(task_id)
+            frames_dir = gen_dir / "frames"
             try:
                 frames_dir.mkdir(parents=True, exist_ok=True)
             except Exception as exc:
@@ -891,8 +949,10 @@ class NoteGenerator:
                 markdown = markdown.replace(marker, f"![]({img_url})", 1)
             except Exception as exc:
                 logger.error(f"生成截图失败 (timestamp={ts})：{exc}")
-                # self._handle_exception(task_id, exc)
-                return None
+                # 单帧失败只移除该 marker，绝不让整篇笔记作废（返回 None 会让上层
+                # write_text(None) 抛 TypeError → 任务 FAILED、笔记整篇丢失）
+                markdown = markdown.replace(marker, "", 1)
+                continue
         return markdown
 
     @staticmethod
@@ -906,16 +966,37 @@ class NoteGenerator:
         """
         return extract_screenshot_timestamps(markdown)
 
-    def _save_metadata(self, video_id: str, platform: str, task_id: str) -> None:
+    def _save_metadata(
+        self,
+        video_id: str,
+        platform: str,
+        task_id: str,
+        title: str = "",
+        status: str = "",
+        summary: str = "",
+        note_dir: str = None,
+    ) -> None:
         """
-        将生成的笔记任务记录插入数据库
+        将任务记录写入全局索引（video_tasks 表），含语义标题/状态/简介。
 
         :param video_id: 视频 ID
         :param platform: 平台标识
         :param task_id: 任务 ID
+        :param title: 语义标题（视频标题 / LLM 标题）
+        :param status: 任务状态（SUCCESS/FAILED…）
+        :param summary: 语义简介（转写前若干字）
+        :param note_dir: 任务文件夹路径
         """
         try:
-            insert_video_task(video_id=video_id, platform=platform, task_id=task_id)
-            logger.info(f"已保存任务记录到数据库 (video_id={video_id}, platform={platform}, task_id={task_id})")
+            insert_video_task(
+                video_id=video_id,
+                platform=platform,
+                task_id=task_id,
+                title=title,
+                status=status,
+                summary=summary,
+                note_dir=note_dir,
+            )
+            logger.info(f"已保存任务记录到数据库 (video_id={video_id}, platform={platform}, task_id={task_id}, title={title[:40]!r})")
         except Exception as e:
             logger.error(f"保存任务记录失败：{e}")
