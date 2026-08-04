@@ -2,6 +2,15 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-04 · 发布 v0.1.3）
+
+v0.1.2 → v0.1.3 的主要变更（稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.3 videonote`）：
+
+- **context 轻量化**：`get_task_status` / `wait_for_note` 默认返回轻量结果（markdown/note_dir/title，不再把完整转写灌回 context）；新增 `get_task_transcript(task_id, segment_range)` 按需取转写（支持按段切片，长视频分段精修不撑爆 context）。
+- **LaTeX 模板换源**：内置 LaTeX 模板换成 Gua927/Latex_Template 的 Math Note / English Article（去除 RUC 校徽水印，LPPL-1.3c 合规，新增 NOTICE.md + LICENSE）。
+- **新增 typst 模板** `templates/typst/zju-lab/`：理工科笔记/实验报告/论文风，保留 ZJU 校徽/校名 logo（来自 Starlight0798/typst-zju-lab-template，MIT）。
+- **文档**：README / README_EN / docs/04 / output-formats.md 同步新模板与用法；CHANGELOG 记录。
+
 ## 维护（2026-08-04 · 新增 typst 模板：zju-lab）
 
 - **新增 typst 内置模板** `templates/typst/zju-lab/`：来自 [Starlight0798/typst-zju-lab-template](https://github.com/Starlight0798/typst-zju-lab-template)（MIT License）—— 理工科笔记 / 实验报告 / 论文风，含封面（课程/学院/姓名/学号/日期 + **保留 ZJU 校徽/校名 logo**）、目录、页眉页脚、两级标题、公式/图表编号、代码高亮、定理环境、参考文献。
