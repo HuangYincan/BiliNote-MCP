@@ -165,7 +165,7 @@ flowchart LR
 
 # 6 📤 多格式导出
 
-机械格式用 `export_transcript`（srt / vtt / json）—— 确定性渲染（时间轴换算），**不耗 LLM**，返回 `file://` 路径。创意格式（思维导图 / 闪卡 / LaTeX / typst / 用户自定义模板）由 **Agent 基于 MD 底稿 + SKILL 模板**生成（LaTeX 内置 Math Note / English Article 模板：数学/理工科笔记风、英文文稿/演讲大纲风）。
+机械格式用 `export_transcript`（srt / vtt / json）—— 确定性渲染（时间轴换算），**不耗 LLM**，返回 `file://` 路径。创意格式（思维导图 / 闪卡 / LaTeX / typst / 用户自定义模板）由 **Agent 基于 MD 底稿 + SKILL 模板**生成（LaTeX 内置 Math Note / English Article 模板：数学/理工科笔记风、英文文稿/演讲大纲风；typst 内置 zju-lab 模板：理工科笔记/实验报告/论文风、带 ZJU 校徽）。
 
 | 工具 | 说明 | 类型 |
 |------|------|------|

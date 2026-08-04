@@ -2,6 +2,13 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-04 · 新增 typst 模板：zju-lab）
+
+- **新增 typst 内置模板** `templates/typst/zju-lab/`：来自 [Starlight0798/typst-zju-lab-template](https://github.com/Starlight0798/typst-zju-lab-template)（MIT License）—— 理工科笔记 / 实验报告 / 论文风，含封面（课程/学院/姓名/学号/日期 + **保留 ZJU 校徽/校名 logo**）、目录、页眉页脚、两级标题、公式/图表编号、代码高亮、定理环境、参考文献。
+- **用法**：`template.typ` / `imports.typ` / `img/` 与 `note.typ` 同目录，`#import "template.typ": project` + `#show: project.with(course: ..., watermark: "ZJU")`；依赖的 `@preview/*` 包由 typst 自动拉取；`typst compile note.typ note.pdf` 编译（可选，无 typst 则只交付 `.typ`）。
+- **许可**：MIT 许可文本随模板保留（`LICENSE`），README 注明来源、ZJU logo 保留与适配其它学校方法。
+- **文档同步**：`output-formats.md` typst 章节改写为 zju-lab 模板流程；README / README_EN / docs/04 提及 typst 内置模板；CHANGELOG 记录。
+
 ## 维护（2026-08-04 · LaTeX 模板换源：去除 RUC 水印）
 
 - **LaTeX 导出模板更换**：内置模板从 4 个单文件风格（academic / lecture / meeting_minutes / minimal）换成 [Gua927/Latex_Template](https://github.com/Gua927/Latex_Template) 的两个子目录 —— `Math Note/`（数学/理工科笔记，`\documentclass{MathNote}`，中文版 `MathNoteCN`，含定理/引理/定义/推论/例题/命题/证明/注记环境）与 `English Article/`（英文文稿/演讲大纲，`\documentclass{article}` + 摘要/章节/多级列表/参考文献）。

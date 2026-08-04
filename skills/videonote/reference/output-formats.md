@@ -46,8 +46,10 @@
 5. **用户自定义模板**：用户提供 `.tex` 路径或放到 `templates/latex/`，同样处理。
 
 ### typst / 其他自定义模板
-1. 读用户提供的模板文件（`.typ` / 其他格式）。
-2. 把底稿内容填入模板结构 → 输出结果文件。
+1. **内置模板**：`templates/typst/zju-lab/` —— 理工科笔记 / 实验报告 / 论文风（封面 + 目录 + 页眉页脚 + 公式/图表编号 + 代码块 + 参考文献，带 ZJU 校徽）。
+2. **使用**：把 `template.typ`、`imports.typ`、`img/` 与生成的 `note.typ` 放同目录，在 `note.typ` 顶部 `#import "template.typ": project` + `#show: project.with(course: ..., lab_name: ..., ...)`；正文按 `demo.typ` 示例组织（`= 标题`、`$公式$`、代码块、`#bibliography`）。
+3. **编译**：若系统有 `typst`（`which typst`），`typst compile note.typ note.pdf`（依赖的 `@preview/*` 包自动拉取）；没有则只交付 `.typ`。
+4. **用户自定义模板**：用户提供 `.typ` / 其他格式模板文件，同样处理（读模板结构 → 把底稿内容填入 → 输出结果文件）。
 
 ## 输出落盘位置
 
