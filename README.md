@@ -5,6 +5,7 @@
 <p align="center">
   <a href="#-快速开始">⚡ 快速开始</a> •
   <a href="#-文档">📚 文档</a> •
+  <a href="#-真实案例">🎬 真实案例</a> •
   <a href="#-流水线地图">🗺️ 流水线地图</a> •
   <a href="#0--端到端全流程">0 端到端</a> •
   <a href="#1--下载与平台解析">1 下载</a> •
@@ -65,6 +66,34 @@ videonote setup
 - [🏗️ 架构设计](docs/02-架构设计.md)
 - [📖 使用手册](docs/04-使用手册.md) —— 安装（4 种方式）· 配置（setup 向导 + CLI）· 环境变量 · 更新 · 安全
 - [📜 更新日志](docs/CHANGELOG.md)
+
+---
+
+## 🎬 真实案例
+
+两个端到端真实案例：一个走 **AGENT 直接生成**并输出 LaTeX mathnote PDF，一个走 **全自动 LLM 生成**产出便携 Markdown。
+
+### 案例一 · agent_direct + LaTeX mathnote（DeepSeek-V4 视频）
+
+> 来源：[【闪客】深入解读 DeepSeek V1~V4！男女老少都听得懂～](https://www.bilibili.com/video/BV1rpovBCEGH/?vd_source=2a93b97e35c51587de18c73fcf753191)
+
+一条视频 + 四类外部资料（论文 / 技术报告 / 公众号官宣 / 开源集合）→ **AGENT 直接生成**精修笔记，并输出 **LaTeX mathnote PDF**（中文楷体模板）：
+
+| Page1 | Page2 | Page3 |
+| :---: | :---: | :---: |
+| <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page1.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page2.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page3.jpg"> |
+
+亮点：**agent_direct 全流程**（无 LLM key，Agent 读转写 + 帧图 + 评论自写笔记）· **多源交叉整合**（视频 × 论文 × 技术报告 × 开源清单）· **精修保留原稿**（`note.md` / `note_original.md` 双份）· **LaTeX mathnote PDF**（自适应修复字体缺失 / 断行溢出 / 引用去重）。完整过程记录见 [`examples/agent-direct-deepseek-v4-mathnote/README.md`](examples/agent-direct-deepseek-v4-mathnote/README.md)。
+
+### 案例二 · 全自动 LLM 生成 + 便携 Markdown（多视频并行）
+
+极简 Prompt（3 个 B 站链接 + 输出目录，一个参数都没说明）→ **全自动**跑完 环境检查 → 链接识别 → 供应商/模型发现 → 参数确认 → 多视频并行 → 生成后基于字幕精修，产出 3 份**精修便携笔记**（`note.md` + `Assets/` 截图 + 「观众观点」章节，并保留 `note_original.md` 供对比）。
+
+- [雅思](https://www.bilibili.com/video/BV1c54y187SH/)：破误区 + 听/读/写/口语四科拆解 + 179 高频考点词 + 15 句逻辑框架
+- [法医](https://www.bilibili.com/video/BV1QEgZ6rEGj/)：从业 43 年法医「拉片」对比影视与现实，精修扩为 12 节
+- [Transformer](https://www.bilibili.com/video/BV1r8nMz4EAj/)：自注意力机制详解，18 张截图按讲课时间线分布
+
+完整过程记录见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
 
 ---
 
@@ -220,7 +249,7 @@ flowchart TB
 - **讲座精读**：端到端生成后，agent 基于完整字幕精修、按章节补齐细节。
 - **视频赏析**：开启弹幕 + 评论整合，笔记含「观众观点」章节。
 - **端到端 vs 解耦**：一条链接用 `generate_note`；只要某一步（只转写 / 只抽帧 / 只总结 / 只抓评论）就用独立工具任意组合。
-- **真实案例**：3 个链接 → 3 份精修便携笔记，完整过程记录见 [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md)。
+- **真实案例**：完整案例过程记录见 [`examples`](examples)。
 
 ## 🤝 如何贡献
 

@@ -5,6 +5,7 @@
 <p align="center">
   <a href="#-quick-start">⚡ Quick Start</a> •
   <a href="#-docs">📚 Docs</a> •
+  <a href="#-real-world-examples">🎬 Real-world Examples</a> •
   <a href="#-pipeline-map">🗺️ Pipeline Map</a> •
   <a href="#0--end-to-end-pipeline">0 End-to-end</a> •
   <a href="#1--download-and-platform-parsing">1 Download</a> •
@@ -62,6 +63,34 @@ Full installation / configuration / usage / env vars / updating / security docs 
 - [🏗️ Architecture](docs/02-架构设计.md)
 - [📖 User Manual](docs/04-使用手册.md) — install (4 methods) · config (setup wizard + CLI) · env vars · updating · security
 - [📜 Changelog](docs/CHANGELOG.md)
+
+---
+
+## 🎬 Real-world Examples
+
+Two end-to-end examples: one runs **AGENT direct generation** and outputs a **LaTeX mathnote PDF**; the other runs **fully automatic LLM generation** and produces portable Markdown.
+
+### Example 1 · agent_direct + LaTeX mathnote (DeepSeek-V4 video)
+
+> Source: [【闪客】深入解读 DeepSeek V1~V4！男女老少都听得懂～](https://www.bilibili.com/video/BV1rpovBCEGH/?vd_source=2a93b97e35c51587de18c73fcf753191)
+
+One video + four kinds of external sources (paper / tech report / WeChat announcement / open-source collections) → **AGENT direct generation** of a refined note, output as a **LaTeX mathnote PDF** (Chinese KaiTi template):
+
+| Page1 | Page2 | Page3 |
+| :---: | :---: | :---: |
+| <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page1.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page2.jpg"> | <img width="250" src="examples/agent-direct-deepseek-v4-mathnote/deepseek-v4-mathnote-page3.jpg"> |
+
+Highlights: **full agent_direct flow** (no LLM key — the Agent writes the note from transcript + frames + comments) · **multi-source cross-integration** (video × paper × tech report × open-source list) · **refined copy keeps the original** (`note.md` / `note_original.md` pair) · **LaTeX mathnote PDF** (auto-fixes missing fonts / line-overflow / citation dedup). Full run record: [`examples/agent-direct-deepseek-v4-mathnote/README.md`](examples/agent-direct-deepseek-v4-mathnote/README.md).
+
+### Example 2 · Fully automatic LLM generation + portable Markdown (multi-video parallel)
+
+A minimal prompt (3 Bilibili links + an output dir, not a single parameter given) → **fully automatic** run of  env check → link detection → provider/model discovery → parameter confirmation → multi-video parallel → post-generation refinement from the transcript, producing 3 **portable refined notes** (`note.md` + `Assets/` screenshots + a "Viewer Opinions" section, keeping `note_original.md` for comparison).
+
+- [**IELTS**](https://www.bilibili.com/video/BV1c54y187SH/): myth-busting + listening/reading/writing/speaking breakdown + 179 high-frequency exam words + 15-sentence logic framework
+- [**Forensics**](https://www.bilibili.com/video/BV1QEgZ6rEGj/): a 43-year forensic pathologist "reacts" to film vs. reality; refined into 12 sections
+- [**Transformer**](https://www.bilibili.com/video/BV1r8nMz4EAj/): self-attention deep dive, 18 screenshots distributed along the lecture timeline
+
+Full run record: [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md).
 
 ---
 
@@ -217,7 +246,7 @@ flowchart TB
 - **Deep-reading a lecture**: after end-to-end generation, the agent refines from the full transcript, filling in section by section.
 - **Video appreciation**: enable danmaku + comment integration for an "Audience viewpoints" section.
 - **End-to-end vs decoupled**: use `generate_note` for a single link; use standalone tools in any combination when you only want one step (transcribe / frames / summarize / comments).
-- **Real example**: 3 links → 3 refined portable notes; full run record in [`examples/note-generation-example/README.md`](examples/note-generation-example/README.md).
+- **Real example**: full run records for both cases live in [`examples`](examples).
 
 ## 🤝 How to Contribute
 
