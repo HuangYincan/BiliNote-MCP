@@ -2,6 +2,29 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-04 · 发布 v0.1.3）
+
+v0.1.2 → v0.1.3 的主要变更（稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.3 videonote`）：
+
+- **context 轻量化**：`get_task_status` / `wait_for_note` 默认返回轻量结果（markdown/note_dir/title，不再把完整转写灌回 context）；新增 `get_task_transcript(task_id, segment_range)` 按需取转写（支持按段切片，长视频分段精修不撑爆 context）。
+- **LaTeX 模板换源**：内置 LaTeX 模板换成 Gua927/Latex_Template 的 Math Note / English Article（去除 RUC 校徽水印，LPPL-1.3c 合规，新增 NOTICE.md + LICENSE）。
+- **新增 typst 模板** `templates/typst/zju-lab/`：理工科笔记/实验报告/论文风，保留 ZJU 校徽/校名 logo（来自 Starlight0798/typst-zju-lab-template，MIT）。
+- **文档**：README / README_EN / docs/04 / output-formats.md 同步新模板与用法；CHANGELOG 记录。
+
+## 维护（2026-08-04 · 新增 typst 模板：zju-lab）
+
+- **新增 typst 内置模板** `templates/typst/zju-lab/`：来自 [Starlight0798/typst-zju-lab-template](https://github.com/Starlight0798/typst-zju-lab-template)（MIT License）—— 理工科笔记 / 实验报告 / 论文风，含封面（课程/学院/姓名/学号/日期 + **保留 ZJU 校徽/校名 logo**）、目录、页眉页脚、两级标题、公式/图表编号、代码高亮、定理环境、参考文献。
+- **用法**：`template.typ` / `imports.typ` / `img/` 与 `note.typ` 同目录，`#import "template.typ": project` + `#show: project.with(course: ..., watermark: "ZJU")`；依赖的 `@preview/*` 包由 typst 自动拉取；`typst compile note.typ note.pdf` 编译（可选，无 typst 则只交付 `.typ`）。
+- **许可**：MIT 许可文本随模板保留（`LICENSE`），README 注明来源、ZJU logo 保留与适配其它学校方法。
+- **文档同步**：`output-formats.md` typst 章节改写为 zju-lab 模板流程；README / README_EN / docs/04 提及 typst 内置模板；CHANGELOG 记录。
+
+## 维护（2026-08-04 · LaTeX 模板换源：去除 RUC 水印）
+
+- **LaTeX 导出模板更换**：内置模板从 4 个单文件风格（academic / lecture / meeting_minutes / minimal）换成 [Gua927/Latex_Template](https://github.com/Gua927/Latex_Template) 的两个子目录 —— `Math Note/`（数学/理工科笔记，`\documentclass{MathNote}`，中文版 `MathNoteCN`，含定理/引理/定义/推论/例题/命题/证明/注记环境）与 `English Article/`（英文文稿/演讲大纲，`\documentclass{article}` + 摘要/章节/多级列表/参考文献）。
+- **去除 RUC 校徽水印**：删除两模板中 `\usepackage{background}` + `\backgroundsetup{...logo-RUC.png}` 的整页背景水印（`MathNote.cls` / `MathNoteCN.cls` / `English Article/main.tex`），并删除 `logo-RUC.png`；重编译 `main.pdf`、重新生成 README 预览图（image.png / image-1.png），产物均无水印。
+- **LPPL-1.3c 合规**：模板头部加"改编自上游 + 修改说明"注释；新增 `templates/latex/NOTICE.md`（来源/修改内容/许可义务/变更日志）与 `LICENSE-LPPL-1.3c.txt`（许可原文）；模板 README 注明改编来源、修改点与上游链接，并声明由 VideoNote-MCP 维护、与上游作者无关。
+- **文档同步**：`output-formats.md` LaTeX 章节改写为两模板流程（含 Math Note 需随带 `.cls`、连续编译两遍的说明）；README / README_EN / docs/04 模板名引用更新为 Math Note / English Article；CHANGELOG 记录。
+
 ## 维护（2026-08-04 · 发布 v0.1.2）
 
 v0.1.1 → v0.1.2 的主要变更（详见下方各「维护」节点块；稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.2 videonote`）：

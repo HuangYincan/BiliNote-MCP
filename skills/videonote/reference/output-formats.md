@@ -37,21 +37,19 @@
 2. 写 `flashcards.md`（`Q: …\nA: …` 格式），便于导入 Anki。
 
 ### LaTeX（模板驱动）
-1. **列出 `templates/latex/` 里的风格让用户选**（默认 `academic`）：
-   - `academic.tex` —— 学术/论文风
-   - `lecture.tex` —— 讲义/课堂风
-   - `meeting_minutes.tex` —— 会议纪要风
-   - `minimal.tex` —— 极简风
-2. **Read 所选模板 `.tex`**（含 frontmatter：`%% style: academic %%` 等，供确认）。
-3. **以模板为风格骨架、底稿为信息源**，生成 `note.tex`：不直接替换 `%%CONTENT%%`
-   占位符，而是按模板的文档类/章节结构/要点框习惯，把底稿内容**重构**进去。
-4. 可选编译 PDF：若系统有 `xelatex`（`which xelatex`），可 `xelatex note.tex` 编译；
-   没有则只交付 `.tex`。
+1. **列出 `templates/latex/` 下的模板让用户选**（默认 `Math Note`）：
+   - `Math Note/` —— 数学/理工科笔记风（`\documentclass{MathNote}`；中文换 `MathNoteCN`；含定理/引理/定义/推论/例题/命题/证明/注记环境）
+   - `English Article/` —— 英文文稿/演讲大纲风（`\documentclass{article}` + 摘要/章节/多级列表/参考文献）
+2. **Read 所选模板子目录的 `main.tex` 及同目录 README**（新模板无 frontmatter；README 说明文档类、中英文切换与编译注意）。
+3. **以模板为骨架、底稿为信息源**，生成 `note.tex`：Math Note 用 definition/theorem/lemma/proof 等环境组织数学内容，English Article 用 section/abstract/thebibliography 组织英文稿。
+4. 可选编译 PDF：若系统有 `xelatex`（`which xelatex`），把模板的 `.cls`（Math Note 需 `MathNote.cls`/`MathNoteCN.cls`）随 `note.tex` 一起放到位再编译；Math Note 背景图需**连续编译两遍**；没有 xelatex 则只交付 `.tex`。
 5. **用户自定义模板**：用户提供 `.tex` 路径或放到 `templates/latex/`，同样处理。
 
 ### typst / 其他自定义模板
-1. 读用户提供的模板文件（`.typ` / 其他格式）。
-2. 把底稿内容填入模板结构 → 输出结果文件。
+1. **内置模板**：`templates/typst/zju-lab/` —— 理工科笔记 / 实验报告 / 论文风（封面 + 目录 + 页眉页脚 + 公式/图表编号 + 代码块 + 参考文献，带 ZJU 校徽）。
+2. **使用**：把 `template.typ`、`imports.typ`、`img/` 与生成的 `note.typ` 放同目录，在 `note.typ` 顶部 `#import "template.typ": project` + `#show: project.with(course: ..., lab_name: ..., ...)`；正文按 `demo.typ` 示例组织（`= 标题`、`$公式$`、代码块、`#bibliography`）。
+3. **编译**：若系统有 `typst`（`which typst`），`typst compile note.typ note.pdf`（依赖的 `@preview/*` 包自动拉取）；没有则只交付 `.typ`。
+4. **用户自定义模板**：用户提供 `.typ` / 其他格式模板文件，同样处理（读模板结构 → 把底稿内容填入 → 输出结果文件）。
 
 ## 输出落盘位置
 
