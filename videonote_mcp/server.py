@@ -603,8 +603,12 @@ def prepare_note_material(
 
 
 @mcp.tool()
-def get_task_status(task_id: str) -> str:
-    """查询笔记生成任务进度。SUCCESS 时 result 含 markdown / transcript / audio_meta。"""
+def get_task_status(task_id: str, include_transcript: bool = False) -> str:
+    """查询笔记生成任务进度（轻量快照）。SUCCESS 时 result 含 markdown / note_dir / title。
+
+    默认**不含完整转写**——转写可能数万 token，一次调用就会撑爆 context。需要转写文本：
+    用 `get_task_transcript(task_id)` 按需取（支持按段切片）；或本调用传
+    `include_transcript=True` 一次性拿全量（长视频慎用）。"""
     task_id = _validate_task_id(task_id)
     task_dir = NOTE_OUTPUT_DIR / str(task_id)
     status_file = task_dir / "status.json"
@@ -624,6 +628,15 @@ def get_task_status(task_id: str) -> str:
     if status == "SUCCESS" and result_file.exists():
         try:
             result = json.loads(result_file.read_text(encoding="utf-8"))
+            if result and not include_transcript:
+                # 轻量结果：默认剥掉完整转写/评论，避免一次工具调用灌入数十万 token
+                result.pop("transcript", None)
+                result.pop("comments_danmaku", None)
+            elif result:
+                # 即便要全量转写，也剥掉 raw（原始 API 响应可能很大）
+                tr = result.get("transcript")
+                if isinstance(tr, dict):
+                    tr.pop("raw", None)
             if result and result.get("markdown"):
                 result["markdown"] = _absolutize_images(result["markdown"])
             if result and "title" not in result:
@@ -645,15 +658,17 @@ def get_task_status(task_id: str) -> str:
 
 
 @mcp.tool()
-def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> str:
+def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3, include_transcript: bool = False) -> str:
     """阻塞轮询笔记生成任务直到完成（或超时）。长视频可能超过 timeout，可用多次调用续等。
 
     返回与 get_task_status 相同的结构，SUCCESS 时 result 含最终 Markdown。
+    默认不含完整转写（避免撑爆 context）；需要转写用 get_task_transcript(task_id) 按需取，
+    或传 include_transcript=True 一次拿全量。
     """
     task_id = _validate_task_id(task_id)
     deadline = time.time() + max(1, timeout)
     while time.time() < deadline:
-        resp = json.loads(get_task_status(task_id))
+        resp = json.loads(get_task_status(task_id, include_transcript=include_transcript))
         if resp["status"] in ("SUCCESS", "FAILED", "CANCELLED"):
             return json.dumps(resp, ensure_ascii=False)
         time.sleep(max(1, poll_interval))
@@ -663,6 +678,108 @@ def wait_for_note(task_id: str, timeout: int = 120, poll_interval: int = 3) -> s
             "message": f"等待 {timeout}s 仍未完成，可再次调用 wait_for_note / get_task_status 续等",
             "task_id": task_id,
             "result": None,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _parse_segment_range(spec: str, total: int) -> tuple:
+    """解析 segment_range 字符串为 [lo, hi)（0 基，hi 开区间），越界自动钳制。
+
+    支持 "a-b"（a 起 b 止，含 a 不含 b）、"a-"（a 起到末尾）、"-b"（开头到 b）、
+    "a"（单段）。空/非法 → 全量 (0, total)。
+    """
+    spec = (spec or "").strip()
+    if not spec:
+        return (0, total)
+    m = re.fullmatch(r"(\d*)\s*-\s*(\d*)|(\d+)", spec)
+    if not m:
+        return (0, total)
+    if m.group(3) is not None:  # 单段
+        a = int(m.group(3))
+        a = max(0, min(a, total))
+        return (a, min(a + 1, total))
+    a_str, b_str = m.group(1), m.group(2)
+    a = int(a_str) if a_str else 0
+    b = int(b_str) if b_str else total
+    a = max(0, min(a, total))
+    b = max(a, min(b, total))
+    return (a, b)
+
+
+@mcp.tool()
+def get_task_transcript(task_id: str, segment_range: str = "") -> str:
+    """读取已完成任务的转写文本（不耗 LLM，从磁盘按需取，避免撑爆 context）。
+
+    - `segment_range` 空（默认）：返回完整转写；
+    - 超长转写（数万 token）会撑爆 context，用 `segment_range` 按段切片分段读取，
+      如 `"0-50"` 取第 0~49 段、`"50-"` 取第 50 段起、`"150-200"` 取 150~199 段。
+    返回 `{task_id, ok, language, segments, full_text, meta:{total_segments,
+    returned_segments, total_chars, returned_chars, truncated}}`。任务未成功/无转写时
+    `ok:false`。"""
+    task_id = _validate_task_id(task_id)
+    task_dir = NOTE_OUTPUT_DIR / str(task_id)
+
+    # 规范来源：gen/transcript.json（note.py 每次成功都会写）；缺失则退 result.json
+    transcript = None
+    cache = task_dir / "gen" / "transcript.json"
+    if cache.exists():
+        try:
+            transcript = json.loads(cache.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"读取转写缓存失败 task_id={task_id}: {e}")
+    if transcript is None:
+        result_file = task_dir / "result.json"
+        if result_file.exists():
+            try:
+                result = json.loads(result_file.read_text(encoding="utf-8"))
+                transcript = result.get("transcript")
+            except Exception:
+                transcript = None
+    if not transcript:
+        status = "UNKNOWN"
+        try:
+            st = json.loads((task_dir / "status.json").read_text(encoding="utf-8"))
+            status = st.get("status", "UNKNOWN")
+        except Exception:
+            pass
+        return json.dumps(
+            {
+                "task_id": task_id,
+                "ok": False,
+                "status": status,
+                "message": "该任务没有可读转写（尚未成功或已清理）",
+            },
+            ensure_ascii=False,
+        )
+
+    segments = transcript.get("segments") or []
+    language = transcript.get("language")
+    full_text = transcript.get("full_text") or ""
+    total = len(segments)
+
+    lo, hi = _parse_segment_range(segment_range, total)
+    if (lo, hi) == (0, total):
+        out_segments = segments
+        out_text = full_text
+    else:
+        out_segments = segments[lo:hi]
+        out_text = "\n".join(seg.get("text", "") for seg in out_segments)
+
+    return json.dumps(
+        {
+            "task_id": task_id,
+            "ok": True,
+            "language": language,
+            "segments": out_segments,
+            "full_text": out_text,
+            "meta": {
+                "total_segments": total,
+                "returned_segments": len(out_segments),
+                "total_chars": len(full_text),
+                "returned_chars": len(out_text),
+                "truncated": (lo, hi) != (0, total),
+            },
         },
         ensure_ascii=False,
     )

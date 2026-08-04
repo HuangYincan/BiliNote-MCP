@@ -6,7 +6,7 @@
 - 语音转录模型：Bcut（云端，无需本地下载模型）
 - B 站账号已扫码登录（SESSDATA）
 - Agent 环境：配有 DeepSeek-V4-Flash 的 ClaudeCode 环境
-- 基于 v0.1.2 的 VideoNote-MCP 生成
+- 基于 v0.1.1 的 VideoNote-MCP 生成
 
 ## Prompt
 
