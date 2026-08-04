@@ -2,6 +2,19 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-04 · 发布 v0.1.2）
+
+v0.1.1 → v0.1.2 的主要变更（详见下方各「维护」节点块；稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.2 videonote`）：
+
+- **品牌重命名**：BiliNote-Mcp → **VideoNote-Mcp**（Python 包 `videonote_mcp`、CLI `videonote`、Skill `skills/videonote`、环境变量 `VIDEONOTE_*`、数据目录 `~/.local/share/videonote-mcp`、GitHub 仓库 `HuangYincan/VideoNote-MCP`）。
+- **数据层重构**：每任务一个文件夹 `note_results/{task_id}/`（`raw/` 下载物 + `gen/` 生成物隔离）；SQLite `video_tasks` 全局任务索引（title/status/summary/note_dir）+ 新工具 `list_tasks`；语义标题捕获；setup ④ 数据管理（列任务/清理单任务/全局清理）。
+- **FunASR 中文引擎**：Paraformer-zh + VAD + 中文标点（可选重依赖，中文转写质量优于 faster-whisper）。
+- **音频增强**：`merge_audio`（多文件合并 16kHz mono）、音频预处理（归一 + 超长分块）、`diarize_media` 说话人分离（pyannote 可选）、generic 下载器（yt-dlp 覆盖 1800+ 站点）。
+- **多格式输出**：`export_transcript` 确定性导出 srt/vtt/json（不耗 LLM）+ setup 导出格式默认；LaTeX 模板资产 + output-formats reference（创意格式走 SKILL/Agent）；不支持的平台返回 `handoff:true` 由 Agent 接手。
+- **流水线解耦**：独立步骤层 `app/services/pipeline.py` + 4 个新 MCP 工具（`fetch_subtitles` / `transcribe_media` / `extract_frames` / `summarize_note`）。
+- **全量审计修复**：转写配置 / YouTube 字幕 / 截图 / 导出 / 路径安全等 28 文件。
+- **文档**：README 中英模板化重构 + 头图定稿 + 真实端到端示例（`examples/note-generation-example/`）+ 数据目录路径统一 `~/.local/share/videonote-mcp`。
+
 ## 维护（2026-08-02 · 重命名 VideoNote-Mcp）
 
 - **全面重命名**：项目从旧名更名为 **VideoNote-Mcp** —— Python 包 `videonote_mcp`、CLI 命令 `videonote`、Skill `skills/videonote`、环境变量 `VIDEONOTE_*`、数据目录 `~/.local/share/videonote-mcp`、数据库 `video_note.db`、GitHub 仓库 `HuangYincan/VideoNote-MCP`；旧命名体系（`*_mcp` / `-mcp` / `*_NOTE_*` 前缀等）全部替换为 `videonote*`。本条目为文档侧记录，代码侧重命名由并行工作完成。
