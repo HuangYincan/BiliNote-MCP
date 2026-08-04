@@ -15,11 +15,19 @@
 - `notes_dir`: 便携笔记目录（指定即写 note.md，即使不插图片）。
 - **任务一次只发一个**：有进行中任务时 server 直接拒绝（先等上一个 SUCCESS/FAILED/CANCELLED）。
 
-### `get_task_status(task_id)`
-- 轻量快照轮询。返回 `{status, message, task_id, result?}`；`SUCCESS` 时 `result.markdown` / `result.transcript` / `result.note_dir`。
+### `get_task_status(task_id, include_transcript=False)`
+- 轻量快照轮询。返回 `{status, message, task_id, result?}`；`SUCCESS` 时 `result` 含 `markdown`（或 material 模式的 `frames`/`video_path`/`audio_path`）、`note_dir`、`title`。
+- **默认不含完整转写**——转写可能数万 token，一次工具调用就会撑爆 context。需要转写文本用 `get_task_transcript(task_id)` 按需取；或传 `include_transcript=True` 一次性拿全量（长视频慎用）。
 
-### `wait_for_note(task_id, timeout=120, poll_interval=3)`
+### `get_task_transcript(task_id, segment_range="")`
+- 读取已完成任务的**转写文本**（不耗 LLM，从磁盘按需取，避免撑爆 context）。
+- `segment_range` 空（默认）返回完整转写；超长转写按段切片分段读：`"0-50"` 取第 0~49 段、`"50-"` 取第 50 段起、`"150-200"` 取 150~199 段。
+- 返回 `{task_id, ok, language, segments, full_text, meta:{total_segments, returned_segments, total_chars, returned_chars, truncated}}`。
+- 适用：后续优化精修、回答"视频里某个细节"、Agent 直接生成时读长转写。
+
+### `wait_for_note(task_id, timeout=120, poll_interval=3, include_transcript=False)`
 - **阻塞**等 SUCCESS/FAILED/CANCELLED；**多任务/对话中勿用**（会卡住当前轮次）。等完成优先 `get_task_status` 轮询。
+- 默认不含完整转写（同 `get_task_status`）；`include_transcript=True` 一次拿全量。
 
 ### `cancel_note(task_id)`
 - 取消进行中/排队任务（协作式，下一阶段边界生效）；返回 `{ok, task_id, status}`。
@@ -29,7 +37,7 @@
 ### `prepare_note_material(video_url, platform?, video_understanding?, video_interval?, grid_size?, include_comments?, comments_limit?)`
 - **只准备素材、不调用配置 LLM**：跑下载 → 转写 →（可选）抽帧 →（可选）评论/弹幕，返回素材包（`kind: "material"`）。
 - 参数与 `generate_note` 对应；不传 `video_understanding` / `video_interval` / `include_comments` / `comments_limit` 时套 setup 默认（视频理解默认关 / 6s，评论默认关 / 20 条）。
-- 返回 `{task_id, status: "PENDING", platform}`；`get_task_status` 轮询到 `SUCCESS` 时 `result` 结构：
+- 返回 `{task_id, status: "PENDING", platform}`；`get_task_status` 轮询到 `SUCCESS` 时 `result` 结构（**默认轻量**：`transcript`/`comments_danmaku` 需 `include_transcript=True` 才有）：
   ```json
   {
     "kind": "material",
@@ -45,7 +53,7 @@
     "audio_path": "/绝对/路径/audio.mp3"
   }
   ```
-- 用途：**AGENT 直接生成**（agent_direct）—— AGENT 自己读 `transcript.full_text`、用 Read 看 `frames` 图片、按 `comments_danmaku` 写「观众观点」章节，不经配置 LLM。
+- 用途：**AGENT 直接生成**（agent_direct）—— AGENT 自己读转写、用 Read 看 `frames` 图片、按 `comments_danmaku` 写「观众观点」章节，不经配置 LLM。转写文本优先用 `get_task_transcript(task_id, segment_range=...)` 按需取（超长分段，避免撑爆 context）；评论/弹幕用 `get_task_status(task_id, include_transcript=True)` 取。
 
 ## 模块解耦（独立步骤工具）
 

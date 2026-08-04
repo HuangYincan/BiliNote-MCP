@@ -8,8 +8,8 @@
 
 任务成功后（`get_task_status` 返回 `SUCCESS`）：
 
-1. **`get_task_files(task_id)`** —— 列出任务产物，找到 `{task_id}.json`（含 `markdown` 底稿 + `transcript`）。
-2. 读 `{task_id}.json`：`result.markdown`（MD 底稿）、`result.transcript`（含 `full_text` 与 `segments` 时间轴）。
+1. **`get_task_files(task_id)`** —— 列出任务产物，找到 `gen/note.md`（MD 底稿）与 `gen/transcript.json`（转写）。
+2. **`result.markdown`**（MD 底稿）—— 在 `get_task_status` 的轻量结果里直接有，或读 `gen/note.md`；需要转写时用 **`get_task_transcript(task_id)`**（`full_text` 全文 + `segments` 时间轴，可按段切片）。
 3. 便携笔记：`result.note_dir` 指向 `note.md` 所在目录。
 
 底稿 = **转换的信息源**。所有格式转换都以它为依据，不再重新下载/转写。
@@ -25,7 +25,7 @@
 
 ## 创意格式（Agent 基于底稿生成）
 
-原则：读 `{task_id}.json` 的 `markdown` 底稿 → 按目标格式重写为对应文件 → 交付路径。
+原则：读 `result.markdown` 底稿（`get_task_status` 轻量结果 / `gen/note.md`）→ 按目标格式重写为对应文件 → 交付路径。
 
 ### 思维导图（Mermaid）
 1. 读 MD 底稿，提炼层级大纲（标题 → 子要点 → 细节）。

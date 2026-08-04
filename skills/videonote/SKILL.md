@@ -34,10 +34,10 @@ description: 用 VideoNote-Mcp 的 MCP 工具把视频链接/本地视频（B站
    - 并发上限：最多 `VIDEONOTE_MAX_WORKERS`（默认 3）个进行中任务，超出 server 会拒绝。
 4. **AGENT 直接生成（`agent_direct`）—— AGENT 自己写笔记，不调用配置 LLM**：
    1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id` → `get_task_status` 轮询到 `SUCCESS`；
-   2. 读 `result`（素材包）：`transcript.full_text`（完整转写）、`frames`（file:// 图片，多模态模型下用 **Read** 看图）、`comments_danmaku`（评论/弹幕）；
+   2. 取素材：轮询 SUCCESS 后**轻量结果已含** `frames`（file:// 图片，多模态模型下用 **Read** 看图）、`video_path`、`audio_path`；**转写文本用 `get_task_transcript(task_id)` 按需取**（超长转写用 `segment_range="0-50"` 分段读，避免撑爆 context）；评论/弹幕用 `get_task_status(task_id, include_transcript=True)` 一次性取（连带完整转写，长视频慎用）；
    3. **问笔记风格**（默认 detailed，9 种或自定义）→ **AGENT 自己写 Markdown**；素材包里有 `comments_danmaku` 时，笔记**新增一节「观众观点」**总结观众观点（引用实际内容，不捏造；无可总结写「（无）」）→ 呈现；
-   4. 转写可能很长（如 2h 视频超上下文）→ **按章节分段精修**或让用户指定重点。
-5. **生成后是否后续优化**：手动模式**生成后必须问**；全自动模式按参数清单已确认的选择执行（要 → 基于笔记 + 完整字幕/转写精修：从字幕/转写挖更多细节、展开讲透、补齐遗漏、修正不一致、增强结构；不要 → 跳过），不再重复问。
+   4. 转写可能很长（如 2h 视频超上下文）→ 用 `get_task_transcript(task_id, segment_range="a-b")` 按段分段精修，或让用户指定重点。
+5. **生成后是否后续优化**：手动模式**生成后必须问**；全自动模式按参数清单已确认的选择执行（要 → 基于笔记（读 `note_dir` 的 note.md）+ 转写精修：`get_task_transcript(task_id)` 按需取转写、超长分段，从转写挖更多细节、展开讲透、补齐遗漏、修正不一致、增强结构；不要 → 跳过），不再重复问。
 6. **平台接手**：`validate_url` / `generate_note` / `prepare_note_material` 返回 `handoff: True` 时，说明该链接不在内置下载器范围（bilibili/youtube/douyin/tiktok/kuaishou/本地文件之外）。**不要重试、不要报错结束**——Agent 接手：用 WebFetch / 浏览器读取页面提取视频源，或用 yt-dlp 通用模式下载，再以本地文件路径调用 `generate_note(video_url="/绝对/路径/x.mp4", platform="local", ...)`。
 
 ## 工作流
@@ -50,14 +50,14 @@ description: 用 VideoNote-Mcp 的 MCP 工具把视频链接/本地视频（B站
    - **分支 A · AGENT 直接生成**（用户要 `agent_direct` 时）：
      1. `prepare_note_material(video_url, video_understanding?, video_interval?, include_comments?, comments_limit?)` → `task_id`；
      2. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）；
-     3. 读 `result`（素材包）→ **AGENT 自己写笔记**（见强制规则 4：Read 看 `frames`、读 `transcript.full_text`、问风格、含「观众观点」章节）→ 呈现。
+     3. 取素材 → **AGENT 自己写笔记**（见强制规则 4：`get_task_transcript` 读转写、Read 看 `frames`、问风格、含「观众观点」章节）→ 呈现。
    - **分支 B · 配置 LLM**（默认）：
      1. **`generate_note(video_url, provider_id, model_name=<用户选/默认>, style=<用户选/默认>, ...)`** → `task_id`。
         - 视频理解：`video_understanding=True, video_interval=<秒>`（需多模态模型）；
         - 弹幕评论：`include_comments=True, comments_limit=<条>`；
         - 插图片：`screenshot=True, format=["screenshot"]` + `notes_dir="/用户/给的/路径"`。
      2. **轮询**：`get_task_status(task_id)` 轻量快照，直到 `SUCCESS`（长视频可能几分钟；**不要**用阻塞的 `wait_for_note`）。
-     3. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节可读 `result.transcript`。
+     3. **拿到 `result.markdown`** → 直接阅读，用它回答用户的所有问题（无 RAG）；`result.note_dir` 指向笔记文件（读图以它为基准）；追问细节用 **`get_task_transcript(task_id)`** 按需取转写（默认轻量结果不含完整转写）。
 6. **呈现笔记**（要点 + 关键章节 + 原文链接）→ **后续优化**（见强制规则 5：手动模式问、全自动模式按清单确认执行；要则读笔记 + 转写/字幕精修，原笔记保留对比）→ 若有多个视频，其余由 subagent 各自处理（见强制规则 3），主 agent 收集结果统一呈现。
 
 ## 🖨 输出格式（可选，用户要时）
