@@ -1,11 +1,18 @@
 import logging
 import os
 import sys
+from functools import lru_cache
 from pathlib import Path
 
-# 日志目录：落在 VIDEONOTE_DATA_DIR/logs（由 videonote_mcp.config 设置），避免依赖 CWD
-LOG_DIR = Path(os.environ.get("VIDEONOTE_DATA_DIR", ".")) / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+# 日志目录：落在 VIDEONOTE_DATA_DIR/logs（由 videonote_mcp.config 设置），避免依赖 CWD。
+# 必须延迟到首次 get_logger() 时才解析 —— 否则若本模块在 setup_environment() 之前被
+# import（如 cli.py → provider_probe → openai_client 的链路），环境变量尚未就绪，
+# LOG_DIR 会落到当前工作目录（CWD/logs），而不是数据目录。
+@lru_cache(maxsize=1)
+def _log_dir() -> Path:
+    d = Path(os.environ.get("VIDEONOTE_DATA_DIR", ".")) / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 # 日志格式
 formatter = logging.Formatter(
@@ -17,17 +24,19 @@ formatter = logging.Formatter(
 console_handler = logging.StreamHandler(sys.stderr)
 console_handler.setFormatter(formatter)
 
-# 文件输出
-file_handler = logging.FileHandler(LOG_DIR / "app.log", encoding="utf-8")
-file_handler.setFormatter(formatter)
+# 文件输出：同样延迟到首次调用 get_logger() 时创建，此时 VIDEONOTE_DATA_DIR 已就绪
+_file_handler = None
 
-# 获取日志器
 
 def get_logger(name: str) -> logging.Logger:
+    global _file_handler
     logger = logging.getLogger(name)
     if not logger.handlers:
         logger.setLevel(logging.INFO)
         logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
+        if _file_handler is None:
+            _file_handler = logging.FileHandler(_log_dir() / "app.log", encoding="utf-8")
+            _file_handler.setFormatter(formatter)
+        logger.addHandler(_file_handler)
         logger.propagate = False
     return logger

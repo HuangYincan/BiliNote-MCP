@@ -15,6 +15,12 @@ import sys
 from pathlib import Path
 
 from videonote_mcp.config import get_app_config, remove_app_config, set_app_config, setup_environment
+
+# 提前初始化运行时环境（数据目录、DB、输出目录）——必须在 import provider_probe / app.*
+# 之前执行。provider_probe 会连累 app.utils.logger（其日志目录依赖 VIDEONOTE_DATA_DIR），
+# 若 setup 在其后，LOG_DIR 会落到 CWD/logs。
+DATA_DIR = setup_environment()
+
 from videonote_mcp.provider_probe import probe_chat, probe_models
 
 # 轻量 CLI 不该被 import 时的裸 print 污染 stdout，先进程级重定向到 stderr
@@ -27,8 +33,6 @@ def _print_to_stderr(*args, **kwargs):
 
 
 builtins.print = _print_to_stderr
-
-DATA_DIR = setup_environment()
 
 # 只导入 provider 相关（不触发 app.downloaders / app.transcriber 的 import 噪音）
 from app.db.init_db import init_db
