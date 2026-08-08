@@ -12,6 +12,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify version matches tag
+        run: |
+          pkg_version="$(grep -m1 '^version' pyproject.toml | sed -E 's/version = "([^"]+)"/\1/')"
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "pyproject version: $pkg_version"
+          echo "tag version:      $tag_version"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "::error::pyproject.toml version ($pkg_version) 与 tag ($GITHUB_REF_NAME) 不一致，拒绝发布"
+            exit 1
+          fi
+          echo "✅ 版本一致，继续发布"
       - name: Create release for tag
         uses: softprops/action-gh-release@v2
         with:
