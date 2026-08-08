@@ -2,6 +2,12 @@
 
 按关键节点记录项目变更（日期 + 做了什么 + 文档改了什么）。
 
+## 维护（2026-08-06 · 发布 v0.1.4）
+
+v0.1.3 → v0.1.4 的主要变更（稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.4 videonote`）：
+
+- **修复日志误落 CWD/logs**：`app/utils/logger.py` 日志目录改为首次 `get_logger()` 时延迟解析（不再在 import 时锁定），`videonote_mcp/cli.py` 的 `setup_environment()` 提前到 `provider_probe` import 之前——日志从 `~/logs`（CWD）回到数据目录 `~/.local/share/videonote-mcp/logs/`。
+
 ## 维护（2026-08-04 · 发布 v0.1.3）
 
 v0.1.2 → v0.1.3 的主要变更（稳定安装：`uvx --from git+https://github.com/HuangYincan/VideoNote-MCP@v0.1.3 videonote`）：
